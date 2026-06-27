@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# VertiGuard · service health check -> emits one-line JSON
+# Configure the services/URLs you want to watch via the variables below.
+set -uo pipefail
+
+# --- Config (override via environment) -------------------------------------
+N8N_CONTAINER="${N8N_CONTAINER:-n8n}"          # Docker container name for n8n
+WEB_MAIN_URL="${WEB_MAIN_URL:-https://example.com}"
+WEB_APP_URL="${WEB_APP_URL:-https://n8n.example.com/healthz}"
+# ---------------------------------------------------------------------------
+
+ts="$(date -Iseconds)"
+sysd(){ systemctl is-active --quiet "$1" && echo OK || echo FAIL; }
+dock(){ [ "$(docker inspect -f '{{.State.Status}}' "$1" 2>/dev/null)" = running ] && echo OK || echo FAIL; }
+url(){ c="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$1" 2>/dev/null)"; { [ -n "$c" ] && [ "$c" -ge 200 ] && [ "$c" -lt 400 ]; } && echo OK || echo "FAIL($c)"; }
+
+nginx="$(sysd nginx)"
+mariadb="$(sysd mariadb)"
+n8n="$(dock "$N8N_CONTAINER")"
+web_main="$(url "$WEB_MAIN_URL")"
+web_app="$(url "$WEB_APP_URL")"
+
+printf '{"ts":"%s","checks":{"nginx":"%s","mariadb":"%s","n8n":"%s","web_main":"%s","web_app":"%s"}}\n' \
+  "$ts" "$nginx" "$mariadb" "$n8n" "$web_main" "$web_app"

@@ -1,0 +1,53 @@
+{
+  "name": "VertiGuard 03 · SSL expiry alert",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [ { "field": "days", "triggerAtHour": 9 } ] } },
+      "id": "a3000000-0000-4000-8000-000000000001",
+      "name": "Daily 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": { "authentication": "privateKey", "command": "sudo -n /opt/vertiguard/ssl_check.sh" },
+      "id": "a3000000-0000-4000-8000-000000000002",
+      "name": "SSL (SSH)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "VPS SSH" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = JSON.parse((($input.first().json.stdout)||'{}').toString().trim());\nconst TH = 15; // warn when fewer than 15 days left\nconst certs = d.certs || [];\nconst breached = certs.filter(c => Number(c.days) < TH).map(c => c.name);\nconst store = $getWorkflowStaticData('global');\nconst prev = store.vg_ssl || [];\nconst newly = breached.filter(n => !prev.includes(n));\nconst recovered = prev.filter(n => !breached.includes(n));\nstore.vg_ssl = breached;\nif (newly.length === 0 && recovered.length === 0) return [];\nconst dayOf = n => { const c = certs.find(x => x.name === n); return c ? c.days : '?'; };\nconst lines = [];\nif (newly.length) { lines.push('\\uD83D\\uDD36 *VertiGuard \\u2014 SSL expiring soon*'); newly.forEach(n => lines.push('\\u2022 ' + n + ': ' + dayOf(n) + ' days')); }\nif (recovered.length) { if (lines.length) lines.push(''); lines.push('\\uD83D\\uDFE2 *VertiGuard \\u2014 SSL renewed*'); recovered.forEach(n => lines.push('\\u2022 ' + n + ': ' + dayOf(n) + ' days')); }\nlines.push(''); lines.push('\\uD83D\\uDD52 ' + (d.ts || ''));\nreturn [{ json: { message: lines.join('\\n') } }];"
+      },
+      "id": "a3000000-0000-4000-8000-000000000003",
+      "name": "Evaluate SSL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "a3000000-0000-4000-8000-000000000004",
+      "name": "Telegram alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 300],
+      "credentials": { "telegramApi": { "id": "REPLACE_ME", "name": "Telegram account" } }
+    }
+  ],
+  "connections": {
+    "Daily 09:00": { "main": [[{ "node": "SSL (SSH)", "type": "main", "index": 0 }]] },
+    "SSL (SSH)": { "main": [[{ "node": "Evaluate SSL", "type": "main", "index": 0 }]] },
+    "Evaluate SSL": { "main": [[{ "node": "Telegram alert", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

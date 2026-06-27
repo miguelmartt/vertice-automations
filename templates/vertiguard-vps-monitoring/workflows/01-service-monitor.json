@@ -1,0 +1,58 @@
+{
+  "name": "VertiGuard 01 · Service health monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [ { "field": "minutes", "minutesInterval": 5 } ] }
+      },
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "name": "Every 5 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "sudo -n /opt/vertiguard/check_services.sh"
+      },
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "name": "Check VPS (SSH)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "VPS SSH" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($input.first().json.stdout || '{}').toString().trim();\nlet data;\ntry { data = JSON.parse(raw); } catch (e) { data = { checks: {} }; }\nconst checks = data.checks || {};\n\n// Human-friendly labels. Keys must match what check_services.sh emits.\nconst labels = {\n  nginx: 'nginx',\n  mariadb: 'MariaDB',\n  n8n: 'n8n (Docker)',\n  web_main: 'example.com',\n  web_app: 'n8n.example.com'\n};\n\nconst failed = Object.keys(checks).filter(k => !String(checks[k]).startsWith('OK'));\n\nconst store = $getWorkflowStaticData('global');\nconst prev = store.vg_failed || [];\n\nconst newlyFailed = failed.filter(k => !prev.includes(k));\nconst recovered = prev.filter(k => !failed.includes(k));\nstore.vg_failed = failed;\n\n// Only notify when state changes (something goes down or recovers)\nif (newlyFailed.length === 0 && recovered.length === 0) {\n  return [];\n}\n\nconst lines = [];\nif (newlyFailed.length) {\n  lines.push('\\uD83D\\uDD34 *VertiGuard \\u2014 incident*');\n  newlyFailed.forEach(k => lines.push('\\u2022 ' + (labels[k] || k) + ': ' + checks[k]));\n}\nif (recovered.length) {\n  if (lines.length) lines.push('');\n  lines.push('\\uD83D\\uDFE2 *VertiGuard \\u2014 recovered*');\n  recovered.forEach(k => lines.push('\\u2022 ' + (labels[k] || k) + ': OK'));\n}\nlines.push('');\nlines.push('\\uD83D\\uDD52 ' + (data.ts || new Date().toISOString()));\n\nreturn [{ json: { message: lines.join('\\n'), failed, checks } }];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "name": "Evaluate state",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "name": "Telegram alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 300],
+      "credentials": { "telegramApi": { "id": "REPLACE_ME", "name": "Telegram account" } }
+    }
+  ],
+  "connections": {
+    "Every 5 min": { "main": [[{ "node": "Check VPS (SSH)", "type": "main", "index": 0 }]] },
+    "Check VPS (SSH)": { "main": [[{ "node": "Evaluate state", "type": "main", "index": 0 }]] },
+    "Evaluate state": { "main": [[{ "node": "Telegram alert", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

@@ -1,0 +1,53 @@
+{
+  "name": "VertiGuard 05 · fail2ban daily report",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [ { "field": "days", "triggerAtHour": 9 } ] } },
+      "id": "a5000000-0000-4000-8000-000000000001",
+      "name": "Daily 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": { "authentication": "privateKey", "command": "sudo -n /opt/vertiguard/fail2ban_report.sh" },
+      "id": "a5000000-0000-4000-8000-000000000002",
+      "name": "fail2ban (SSH)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "VPS SSH" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = JSON.parse((($input.first().json.stdout)||'{}').toString().trim());\nconst ips = (d.banned_ips || '').trim();\nconst lines = [];\nlines.push('\\uD83D\\uDEE1\\uFE0F *VertiGuard \\u2014 fail2ban report (sshd)*');\nlines.push('\\u2022 Currently banned: ' + d.cur_banned + ' (total: ' + d.tot_banned + ')');\nlines.push('\\u2022 Currently failed: ' + d.cur_failed + ' (total: ' + d.tot_failed + ')');\nif (ips) lines.push('\\u2022 IPs: ' + ips);\nlines.push('');\nlines.push('\\uD83D\\uDD52 ' + (d.ts || ''));\nreturn [{ json: { message: lines.join('\\n') } }];"
+      },
+      "id": "a5000000-0000-4000-8000-000000000003",
+      "name": "Format report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "a5000000-0000-4000-8000-000000000004",
+      "name": "Telegram report",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 300],
+      "credentials": { "telegramApi": { "id": "REPLACE_ME", "name": "Telegram account" } }
+    }
+  ],
+  "connections": {
+    "Daily 09:00": { "main": [[{ "node": "fail2ban (SSH)", "type": "main", "index": 0 }]] },
+    "fail2ban (SSH)": { "main": [[{ "node": "Format report", "type": "main", "index": 0 }]] },
+    "Format report": { "main": [[{ "node": "Telegram report", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

@@ -1,0 +1,53 @@
+{
+  "name": "VertiGuard 04 · Backup watchdog (rclone)",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [ { "field": "days", "triggerAtHour": 6 } ] } },
+      "id": "a4000000-0000-4000-8000-000000000001",
+      "name": "Daily 06:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": { "authentication": "privateKey", "command": "sudo -n /opt/vertiguard/backup_watchdog.sh" },
+      "id": "a4000000-0000-4000-8000-000000000002",
+      "name": "Backup remote (SSH)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "VPS SSH" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = JSON.parse((($input.first().json.stdout)||'{}').toString().trim());\nconst ok = Number(d.today_count) > 0;\nconst store = $getWorkflowStaticData('global');\nconst prevFail = store.vg_bk_fail || false;\nconst nowFail = !ok;\nstore.vg_bk_fail = nowFail;\nif (nowFail === prevFail) return [];\nlet msg;\nif (nowFail) {\n  msg = '\\uD83D\\uDD34 *VertiGuard \\u2014 backup NOT found*\\n\\u2022 No copy for today (' + d.today + ') on remote.\\n\\u2022 Latest: ' + (d.newest || '\\u2014') + '\\n\\n\\uD83D\\uDD52 ' + (d.ts || '');\n} else {\n  msg = '\\uD83D\\uDFE2 *VertiGuard \\u2014 backup OK*\\n\\u2022 Today\\u2019s copy (' + d.today + ') present on remote.\\n\\u2022 Latest: ' + (d.newest || '\\u2014') + '\\n\\n\\uD83D\\uDD52 ' + (d.ts || '');\n}\nreturn [{ json: { message: msg } }];"
+      },
+      "id": "a4000000-0000-4000-8000-000000000003",
+      "name": "Evaluate backup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "a4000000-0000-4000-8000-000000000004",
+      "name": "Telegram alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 300],
+      "credentials": { "telegramApi": { "id": "REPLACE_ME", "name": "Telegram account" } }
+    }
+  ],
+  "connections": {
+    "Daily 06:00": { "main": [[{ "node": "Backup remote (SSH)", "type": "main", "index": 0 }]] },
+    "Backup remote (SSH)": { "main": [[{ "node": "Evaluate backup", "type": "main", "index": 0 }]] },
+    "Evaluate backup": { "main": [[{ "node": "Telegram alert", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

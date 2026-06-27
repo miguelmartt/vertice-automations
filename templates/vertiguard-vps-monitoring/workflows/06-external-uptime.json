@@ -1,0 +1,49 @@
+{
+  "name": "VertiGuard 06 · External uptime (webhook)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "external-uptime",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a6000000-0000-4000-8000-000000000001",
+      "name": "Uptime webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "external-uptime"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Works with dead-man-switch / uptime services (Healthchecks.io, UptimeRobot, etc.)\nconst b = ($input.first().json.body) || $input.first().json || {};\nconst typeRaw = String(b.alertType != null ? b.alertType : (b.alertTypeFriendlyName || b.status || '')).toLowerCase();\nconst isDown = typeRaw === '1' || typeRaw.includes('down') || typeRaw.includes('fail');\nconst icon = isDown ? '\\uD83D\\uDD34' : '\\uD83D\\uDFE2';\nconst state = isDown ? 'DOWN' : 'UP';\nconst monitor = b.monitor || b.monitorFriendlyName || b.name || '?';\nconst url = b.url || b.monitorURL || '?';\nconst details = b.details || b.alertDetails || '\\u2014';\nconst dt = b.datetime || b.alertDateTime || '';\nconst msg = icon + ' *VertiGuard external \\u2014 ' + state + '*\\n' +\n  '\\u2022 Monitor: ' + monitor + '\\n' +\n  '\\u2022 URL: ' + url + '\\n' +\n  '\\u2022 Detail: ' + details + '\\n' +\n  (dt ? ('\\uD83D\\uDD52 ' + dt) : '');\nreturn [{ json: { message: msg } }];"
+      },
+      "id": "a6000000-0000-4000-8000-000000000002",
+      "name": "Format notice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "a6000000-0000-4000-8000-000000000003",
+      "name": "Telegram alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [700, 300],
+      "credentials": { "telegramApi": { "id": "REPLACE_ME", "name": "Telegram account" } }
+    }
+  ],
+  "connections": {
+    "Uptime webhook": { "main": [[{ "node": "Format notice", "type": "main", "index": 0 }]] },
+    "Format notice": { "main": [[{ "node": "Telegram alert", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

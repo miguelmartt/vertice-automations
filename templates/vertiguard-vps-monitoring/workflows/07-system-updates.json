@@ -1,0 +1,53 @@
+{
+  "name": "VertiGuard 07 · System updates (dnf)",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [ { "field": "weeks", "triggerAtDay": [1], "triggerAtHour": 9 } ] } },
+      "id": "a7000000-0000-4000-8000-000000000001",
+      "name": "Monday 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": { "authentication": "privateKey", "command": "sudo -n /opt/vertiguard/updates_check.sh" },
+      "id": "a7000000-0000-4000-8000-000000000002",
+      "name": "Updates (SSH)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "VPS SSH" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = JSON.parse((($input.first().json.stdout)||'{}').toString().trim());\nconst n = Number(d.updates) || 0;\nconst msg = n > 0\n  ? '\\uD83D\\uDCE6 *VertiGuard \\u2014 pending updates*\\n\\u2022 ' + n + ' packages have an update available.\\n\\u2022 Review with: dnf check-update\\n\\n\\uD83D\\uDD52 ' + (d.ts || '')\n  : '\\u2705 *VertiGuard \\u2014 system up to date*\\n\\u2022 0 pending packages.\\n\\n\\uD83D\\uDD52 ' + (d.ts || '');\nreturn [{ json: { message: msg } }];"
+      },
+      "id": "a7000000-0000-4000-8000-000000000003",
+      "name": "Format updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "a7000000-0000-4000-8000-000000000004",
+      "name": "Telegram notice",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [900, 300],
+      "credentials": { "telegramApi": { "id": "REPLACE_ME", "name": "Telegram account" } }
+    }
+  ],
+  "connections": {
+    "Monday 09:00": { "main": [[{ "node": "Updates (SSH)", "type": "main", "index": 0 }]] },
+    "Updates (SSH)": { "main": [[{ "node": "Format updates", "type": "main", "index": 0 }]] },
+    "Format updates": { "main": [[{ "node": "Telegram notice", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}
