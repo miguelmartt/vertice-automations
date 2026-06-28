@@ -1,0 +1,101 @@
+{
+  "name": "A15 - Email daily digest (Gmail + Gemini -> Telegram)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "days", "triggerAtHour": 8, "triggerAtMinute": 0 }
+          ]
+        }
+      },
+      "id": "a1500000-0000-4000-8000-000000000001",
+      "name": "Every morning 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 380]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 25,
+        "simple": true,
+        "filters": {
+          "q": "newer_than:1d -category:promotions -category:social"
+        },
+        "options": {}
+      },
+      "id": "a1500000-0000-4000-8000-000000000002",
+      "name": "Get last 24h email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [480, 380],
+      "credentials": {
+        "gmailOAuth2": { "id": "REPLACE_ME", "name": "Gmail account" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compile the fetched emails into one plain-text block for the model.\n// Gmail 'simple' mode returns From / Subject / snippet.\nconst items = $input.all();\nif (!items.length) {\n  return [{ json: { hasMail: false, compiled: 'NO_NEW_MAIL' } }];\n}\nconst lines = items.map((it, i) => {\n  const j = it.json;\n  const from = j.From || j.from || '(unknown sender)';\n  const subject = j.Subject || j.subject || '(no subject)';\n  const snippet = (j.snippet || '').replace(/\\s+/g, ' ').slice(0, 240);\n  return `${i + 1}. From: ${from}\\n   Subject: ${subject}\\n   Preview: ${snippet}`;\n});\nreturn [{ json: { hasMail: true, count: items.length, compiled: lines.join('\\n\\n') } }];"
+      },
+      "id": "a1500000-0000-4000-8000-000000000003",
+      "name": "Compile email list",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 380]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are my email assistant. Below are the emails I received in the last 24 hours. Write a short morning digest in my language. Group by priority: first \"Needs a reply / action\", then \"FYI\", then \"Probably noise\". For each item give one line: sender - what it's about. End with a one-sentence summary of how busy my inbox is. Plain text only, no Markdown tables. If the input is exactly NO_NEW_MAIL, just reply that there is nothing new.\n\nEmails:\n{{ $json.compiled }}",
+        "messages": { "messageValues": [] },
+        "batching": {}
+      },
+      "id": "a1500000-0000-4000-8000-000000000004",
+      "name": "Summarize with Gemini",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [960, 380]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "id": "a1500000-0000-4000-8000-000000000005",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [960, 600],
+      "credentials": {
+        "googlePalmApi": { "id": "REPLACE_ME", "name": "Google Gemini API" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "id": "a1500000-0000-4000-8000-000000000006",
+      "name": "Send digest to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1220, 380],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_ME", "name": "Telegram bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Every morning 08:00": { "main": [[{ "node": "Get last 24h email", "type": "main", "index": 0 }]] },
+    "Get last 24h email": { "main": [[{ "node": "Compile email list", "type": "main", "index": 0 }]] },
+    "Compile email list": { "main": [[{ "node": "Summarize with Gemini", "type": "main", "index": 0 }]] },
+    "Summarize with Gemini": { "main": [[{ "node": "Send digest to Telegram", "type": "main", "index": 0 }]] },
+    "Google Gemini Chat Model": { "ai_languageModel": [[{ "node": "Summarize with Gemini", "type": "ai_languageModel", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

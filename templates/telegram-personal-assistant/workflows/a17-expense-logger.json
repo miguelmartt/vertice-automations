@@ -1,0 +1,175 @@
+{
+  "name": "A17 - Expense logger (Telegram -> Google Sheets)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "a1700000-0000-4000-8000-000000000001",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 380],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_ME", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Allowlist: only react to your own chat id. Set YOUR_CHAT_ID (numeric).\nconst ALLOWED_CHAT_ID = 'YOUR_CHAT_ID';\nconst msg = $json.message || {};\nconst chatId = String(msg.chat && msg.chat.id);\nif (chatId !== String(ALLOWED_CHAT_ID)) {\n  return [];\n}\nreturn [{ json: { text: (msg.text || '').trim(), chatId } }];"
+      },
+      "id": "a1700000-0000-4000-8000-000000000002",
+      "name": "Only my chat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 380]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-summary",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "/mes",
+              "operator": { "type": "string", "operation": "startsWith" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1700000-0000-4000-8000-000000000003",
+      "name": "Is /mes summary?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [640, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse a free-text expense like \"12 comida\", \"12€ comida\", \"comida 12,50\".\n// Output: date, amount, currency, category, note.\nconst raw = ($json.text || '').trim();\nconst amountMatch = raw.match(/(\\d+[.,]?\\d*)\\s*(€|eur|euros|\\$|usd)?/i);\nif (!amountMatch) {\n  return [{ json: { ok: false, reply: 'No pude leer el importe. Escribe algo como: 12 comida' } }];\n}\nconst amount = parseFloat(amountMatch[1].replace(',', '.'));\nlet currency = (amountMatch[2] || '€').toUpperCase();\nif (currency === 'EUR' || currency === 'EUROS') currency = '€';\nif (currency === 'USD') currency = '$';\n// Everything that is not the amount/currency token becomes the description.\nconst note = raw.replace(amountMatch[0], '').replace(/[€$]/g, '').trim() || '(sin categoría)';\nconst category = note.split(/\\s+/)[0].toLowerCase();\nconst date = new Date().toISOString().slice(0, 10);\nreturn [{ json: { ok: true, date, amount, currency, category, note, reply: `💸 Registrado: ${amount}${currency} · ${note}` } }];"
+      },
+      "id": "a1700000-0000-4000-8000-000000000004",
+      "name": "Parse expense",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 480]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Expenses",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.date }}",
+            "Amount": "={{ $json.amount }}",
+            "Currency": "={{ $json.currency }}",
+            "Category": "={{ $json.category }}",
+            "Note": "={{ $json.note }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "a1700000-0000-4000-8000-000000000005",
+      "name": "Append to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1120, 480],
+      "credentials": {
+        "googleSheetsOAuth2Api": { "id": "REPLACE_ME", "name": "Google Sheets account" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Only my chat').item.json.chatId }}",
+        "text": "={{ $('Parse expense').item.json.reply }}",
+        "additionalFields": {}
+      },
+      "id": "a1700000-0000-4000-8000-000000000006",
+      "name": "Confirm logged",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1360, 480],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_ME", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Expenses",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "a1700000-0000-4000-8000-000000000007",
+      "name": "Read all rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [880, 240],
+      "credentials": {
+        "googleSheetsOAuth2Api": { "id": "REPLACE_ME", "name": "Google Sheets account" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sum this month's expenses grouped by category.\nconst ym = new Date().toISOString().slice(0, 7); // YYYY-MM\nconst rows = $input.all().map((it) => it.json);\nconst mine = rows.filter((r) => String(r.Date || '').startsWith(ym));\nif (!mine.length) {\n  return [{ json: { reply: `📊 ${ym}: aún no hay gastos registrados este mes.` } }];\n}\nlet total = 0;\nconst byCat = {};\nfor (const r of mine) {\n  const a = parseFloat(String(r.Amount).replace(',', '.')) || 0;\n  total += a;\n  const c = r.Category || '(otros)';\n  byCat[c] = (byCat[c] || 0) + a;\n}\nconst cur = mine[0].Currency || '€';\nconst lines = Object.entries(byCat)\n  .sort((a, b) => b[1] - a[1])\n  .map(([c, v]) => `• ${c}: ${v.toFixed(2)}${cur}`);\nconst reply = `📊 Gastos de ${ym}\\nTotal: ${total.toFixed(2)}${cur} en ${mine.length} apuntes\\n\\n${lines.join('\\n')}`;\nreturn [{ json: { reply } }];"
+      },
+      "id": "a1700000-0000-4000-8000-000000000008",
+      "name": "Sum month",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 240]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Only my chat').item.json.chatId }}",
+        "text": "={{ $json.reply }}",
+        "additionalFields": {}
+      },
+      "id": "a1700000-0000-4000-8000-000000000009",
+      "name": "Send summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1360, 240],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_ME", "name": "Telegram bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": { "main": [[{ "node": "Only my chat", "type": "main", "index": 0 }]] },
+    "Only my chat": { "main": [[{ "node": "Is /mes summary?", "type": "main", "index": 0 }]] },
+    "Is /mes summary?": {
+      "main": [
+        [{ "node": "Read all rows", "type": "main", "index": 0 }],
+        [{ "node": "Parse expense", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse expense": { "main": [[{ "node": "Append to Sheet", "type": "main", "index": 0 }]] },
+    "Append to Sheet": { "main": [[{ "node": "Confirm logged", "type": "main", "index": 0 }]] },
+    "Read all rows": { "main": [[{ "node": "Sum month", "type": "main", "index": 0 }]] },
+    "Sum month": { "main": [[{ "node": "Send summary", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

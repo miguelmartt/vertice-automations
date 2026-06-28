@@ -1,0 +1,77 @@
+{
+  "name": "A16 - Calendar daily digest (Google Calendar -> Telegram)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "days", "triggerAtHour": 7, "triggerAtMinute": 30 }
+          ]
+        }
+      },
+      "id": "a1600000-0000-4000-8000-000000000001",
+      "name": "Every morning 07:30",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 380]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "YOUR_CALENDAR_ID",
+          "mode": "id"
+        },
+        "returnAll": true,
+        "options": {
+          "timeMin": "={{ $now.startOf('day').toISO() }}",
+          "timeMax": "={{ $now.endOf('day').toISO() }}",
+          "singleEvents": true,
+          "orderBy": "startTime"
+        }
+      },
+      "id": "a1600000-0000-4000-8000-000000000002",
+      "name": "Today's events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [480, 380],
+      "credentials": {
+        "googleCalendarOAuth2Api": { "id": "REPLACE_ME", "name": "Google Calendar account" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a readable agenda for today + free gaps during working hours.\n// Working window is configurable here.\nconst WORK_START = 9;   // 09:00\nconst WORK_END = 19;    // 19:00\n\nconst items = $input.all();\nconst fmt = (iso) => {\n  const d = new Date(iso);\n  return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });\n};\n\nconst events = items\n  .map((it) => it.json)\n  .filter((e) => e.start && (e.start.dateTime || e.start.date))\n  .map((e) => {\n    const allDay = !e.start.dateTime;\n    const start = e.start.dateTime || e.start.date + 'T00:00:00';\n    const end = (e.end && (e.end.dateTime || e.end.date + 'T23:59:59')) || start;\n    return { summary: e.summary || '(no title)', start, end, allDay, location: e.location || '' };\n  })\n  .sort((a, b) => new Date(a.start) - new Date(b.start));\n\nlet msg = `🗓️ Agenda de hoy (${new Date().toLocaleDateString('es-ES')})\\n`;\n\nif (!events.length) {\n  msg += '\\nNo tienes eventos hoy. Día libre. 🎉';\n  return [{ json: { message: msg } }];\n}\n\nmsg += `\\nTienes ${events.length} evento(s):\\n`;\nfor (const e of events) {\n  if (e.allDay) {\n    msg += `\\n• (todo el día) ${e.summary}`;\n  } else {\n    msg += `\\n• ${fmt(e.start)}–${fmt(e.end)} ${e.summary}`;\n  }\n  if (e.location) msg += `  📍${e.location}`;\n}\n\n// Compute free gaps within the working window between timed events.\nconst timed = events.filter((e) => !e.allDay);\nconst gaps = [];\nlet cursor = new Date();\ncursor.setHours(WORK_START, 0, 0, 0);\nconst dayEnd = new Date();\ndayEnd.setHours(WORK_END, 0, 0, 0);\nfor (const e of timed) {\n  const s = new Date(e.start);\n  const en = new Date(e.end);\n  if (s > cursor) {\n    const mins = Math.round((Math.min(s, dayEnd) - cursor) / 60000);\n    if (mins >= 30) gaps.push(`${fmt(cursor.toISOString())}–${fmt((s < dayEnd ? s : dayEnd).toISOString())}`);\n  }\n  if (en > cursor) cursor = en;\n}\nif (cursor < dayEnd) {\n  const mins = Math.round((dayEnd - cursor) / 60000);\n  if (mins >= 30) gaps.push(`${fmt(cursor.toISOString())}–${fmt(dayEnd.toISOString())}`);\n}\n\nif (gaps.length) {\n  msg += `\\n\\n🟢 Huecos libres (${WORK_START}:00–${WORK_END}:00): ${gaps.join(', ')}`;\n}\n\nreturn [{ json: { message: msg } }];"
+      },
+      "id": "a1600000-0000-4000-8000-000000000003",
+      "name": "Format agenda + free gaps",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 380]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": {}
+      },
+      "id": "a1600000-0000-4000-8000-000000000004",
+      "name": "Send agenda to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [960, 380],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_ME", "name": "Telegram bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Every morning 07:30": { "main": [[{ "node": "Today's events", "type": "main", "index": 0 }]] },
+    "Today's events": { "main": [[{ "node": "Format agenda + free gaps", "type": "main", "index": 0 }]] },
+    "Format agenda + free gaps": { "main": [[{ "node": "Send agenda to Telegram", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

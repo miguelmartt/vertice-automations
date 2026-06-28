@@ -7,7 +7,27 @@ Format loosely based on [Keep a Changelog](https://keepachangelog.com/). Dates a
 
 ## [Unreleased]
 
-- Planned: RSS → AI digest template, expense logger, read-it-later.
+- Nothing pending right now.
+
+## 2026-06-28 — Telegram personal assistant
+
+### Added
+- New template family **`telegram-personal-assistant`**: five independent Telegram assistant
+  workflows.
+  - **Email daily digest** (A15): Gmail last-24h → Gemini summary grouped by *needs reply / FYI /
+    noise* → Telegram, every morning.
+  - **Calendar daily digest** (A16): today's Google Calendar events + free gaps in working hours →
+    Telegram (no AI).
+  - **RSS AI digest** (A10): reads your RSS/Atom feeds → Gemini picks the 5–8 most relevant →
+    Telegram.
+  - **Expense logger** (A17): text `12 lunch` → row in Google Sheets; `/mes` → monthly total by
+    category.
+  - **Read-it-later** (A18): send a link → fetch + Gemini summary (key points + tags) → Google
+    Sheets + reply.
+  - AI on Google Gemini (`gemini-2.5-flash`), data in Google Sheets, allowlisted chat id on the
+    interactive ones. Bilingual docs (EN/ES), all ship inactive.
+- Removed the generic `telegram-ai-assistant` placeholder template (superseded by
+  `telegram-vps-devops-agent` for chat and this family for tasks).
 
 ## 2026-06-28 — Contact form → Telegram
 

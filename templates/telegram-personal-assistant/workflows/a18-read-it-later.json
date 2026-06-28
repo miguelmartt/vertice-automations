@@ -1,0 +1,184 @@
+{
+  "name": "A18 - Read-it-later (Telegram link -> Gemini -> Sheets)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "a1800000-0000-4000-8000-000000000001",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 380],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_ME", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Allowlist + extract the first URL from the message.\nconst ALLOWED_CHAT_ID = 'YOUR_CHAT_ID';\nconst msg = $json.message || {};\nconst chatId = String(msg.chat && msg.chat.id);\nif (chatId !== String(ALLOWED_CHAT_ID)) {\n  return [];\n}\nconst text = (msg.text || '').trim();\nconst urlMatch = text.match(/https?:\\/\\/[^\\s]+/i);\nif (!urlMatch) {\n  return [{ json: { ok: false, chatId, reply: 'Mándame un enlace (http...) y te lo guardo con un resumen.' } }];\n}\nreturn [{ json: { ok: true, chatId, url: urlMatch[0] } }];"
+      },
+      "id": "a1800000-0000-4000-8000-000000000002",
+      "name": "Guard + extract URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 380]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-hasurl",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1800000-0000-4000-8000-000000000003",
+      "name": "Has a URL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [640, 380]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": { "response": { "neverError": true } },
+          "timeout": 15000
+        }
+      },
+      "id": "a1800000-0000-4000-8000-000000000004",
+      "name": "Fetch page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 280],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Strip HTML to readable text and grab the <title>.\nconst html = typeof $json.data === 'string' ? $json.data : ($json.body || '');\nconst url = $('Guard + extract URL').item.json.url;\nconst titleMatch = html.match(/<title[^>]*>([^<]*)<\\/title>/i);\nconst title = titleMatch ? titleMatch[1].trim() : url;\nconst text = html\n  .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n  .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/&[a-z]+;/gi, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim()\n  .slice(0, 6000);\nreturn [{ json: { url, title, text: text || 'NO_CONTENT' } }];"
+      },
+      "id": "a1800000-0000-4000-8000-000000000005",
+      "name": "Extract readable text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 280]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Summarize this article in my language for my read-it-later list. Give: a 2-3 sentence summary, then 3 bullet key points, then 3 short topic tags (comma-separated, lowercase). Keep it tight. If the content is exactly NO_CONTENT, say the page could not be read.\n\nTitle: {{ $json.title }}\nURL: {{ $json.url }}\n\nContent:\n{{ $json.text }}",
+        "messages": { "messageValues": [] },
+        "batching": {}
+      },
+      "id": "a1800000-0000-4000-8000-000000000006",
+      "name": "Summarize with Gemini",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [1320, 280]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "id": "a1800000-0000-4000-8000-000000000007",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [1320, 500],
+      "credentials": {
+        "googlePalmApi": { "id": "REPLACE_ME", "name": "Google Gemini API" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Reading list",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $now.toISO() }}",
+            "Title": "={{ $('Extract readable text').item.json.title }}",
+            "URL": "={{ $('Extract readable text').item.json.url }}",
+            "Summary": "={{ $json.text }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "a1800000-0000-4000-8000-000000000008",
+      "name": "Save to reading list",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1560, 280],
+      "credentials": {
+        "googleSheetsOAuth2Api": { "id": "REPLACE_ME", "name": "Google Sheets account" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Guard + extract URL').item.json.chatId }}",
+        "text": "=📑 Guardado: {{ $('Extract readable text').item.json.title }}\n\n{{ $('Summarize with Gemini').item.json.text }}",
+        "additionalFields": {}
+      },
+      "id": "a1800000-0000-4000-8000-000000000009",
+      "name": "Reply with summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1800, 280],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_ME", "name": "Telegram bot" }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.reply }}",
+        "additionalFields": {}
+      },
+      "id": "a1800000-0000-4000-8000-000000000010",
+      "name": "Reply no URL",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [880, 500],
+      "credentials": {
+        "telegramApi": { "id": "REPLACE_ME", "name": "Telegram bot" }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": { "main": [[{ "node": "Guard + extract URL", "type": "main", "index": 0 }]] },
+    "Guard + extract URL": { "main": [[{ "node": "Has a URL?", "type": "main", "index": 0 }]] },
+    "Has a URL?": {
+      "main": [
+        [{ "node": "Fetch page", "type": "main", "index": 0 }],
+        [{ "node": "Reply no URL", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch page": { "main": [[{ "node": "Extract readable text", "type": "main", "index": 0 }]] },
+    "Extract readable text": { "main": [[{ "node": "Summarize with Gemini", "type": "main", "index": 0 }]] },
+    "Summarize with Gemini": { "main": [[{ "node": "Save to reading list", "type": "main", "index": 0 }]] },
+    "Save to reading list": { "main": [[{ "node": "Reply with summary", "type": "main", "index": 0 }]] },
+    "Google Gemini Chat Model": { "ai_languageModel": [[{ "node": "Summarize with Gemini", "type": "ai_languageModel", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}
