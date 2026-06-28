@@ -18,6 +18,7 @@ workflow JSON(s), any helper scripts, and its own README. Pick the ones you need
 | [`telegram-vps-devops-agent`](templates/telegram-vps-devops-agent/) | Run your VPS from Telegram — chat with an AI agent (Gemini) or use a `/menu` of buttons to read status and run control actions (restart services, unban IP) with a Confirm step. Reuses the VertiGuard scripts. | n8n · LangChain · Gemini · SSH · Telegram |
 | [`form-email-to-telegram`](templates/form-email-to-telegram/) | Get an instant Telegram alert when someone submits your website's contact form — watches the mailbox over IMAP, no changes to your site. | n8n · IMAP · Telegram |
 | [`telegram-personal-assistant`](templates/telegram-personal-assistant/) | Five Telegram assistant workflows: morning email digest, calendar agenda, AI news/RSS digest, expense logger, and a read-it-later that summarizes any link. AI on Gemini; data in Google Sheets. | n8n · Gemini · Gmail · Calendar · Sheets · Telegram |
+| [`client-agency-toolkit`](templates/client-agency-toolkit/) | Three workflows for freelancers/agencies: client-site uptime monitor (Telegram alerts), invoice generator (data → HTML → Gotenberg PDF → email), and a weekly analytics report email (Plausible/Umami). No paid SaaS. | n8n · HTTP · Gotenberg · Plausible · Telegram · SMTP |
 
 _More templates are added over time._
 

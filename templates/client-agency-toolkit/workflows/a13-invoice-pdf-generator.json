@@ -1,0 +1,103 @@
+{
+  "name": "A13 - Invoice generator (data -> HTML -> Gotenberg PDF -> email)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1300000-0000-4000-8000-000000000001",
+      "name": "Run manually (or swap for Webhook)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [200, 380]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "f1", "name": "seller_name", "value": "Your Company S.L.", "type": "string" },
+            { "id": "f2", "name": "seller_taxid", "value": "B-00000000", "type": "string" },
+            { "id": "f3", "name": "seller_address", "value": "Street 1, 00000 City, Country", "type": "string" },
+            { "id": "f4", "name": "client_name", "value": "Client Name", "type": "string" },
+            { "id": "f5", "name": "client_taxid", "value": "X-00000000", "type": "string" },
+            { "id": "f6", "name": "client_email", "value": "client@example.com", "type": "string" },
+            { "id": "f7", "name": "invoice_number", "value": "2026-001", "type": "string" },
+            { "id": "f8", "name": "currency", "value": "EUR", "type": "string" },
+            { "id": "f9", "name": "tax_rate", "value": 21, "type": "number" },
+            { "id": "f10", "name": "items", "value": "=[{\"desc\":\"Service / hours\",\"qty\":10,\"price\":50},{\"desc\":\"Setup fee\",\"qty\":1,\"price\":150}]", "type": "array" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1300000-0000-4000-8000-000000000002",
+      "name": "Invoice data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [420, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a clean HTML invoice and hand it to Gotenberg as an index.html file.\n// Totals are computed here so the template stays presentation-only.\nconst d = $json;\nconst items = Array.isArray(d.items) ? d.items : JSON.parse(d.items || '[]');\nconst cur = d.currency || 'EUR';\nconst money = (n) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: cur }).format(n || 0);\nconst today = new Date().toLocaleDateString('es-ES');\n\nlet subtotal = 0;\nconst rows = items.map((it) => {\n  const line = (Number(it.qty) || 0) * (Number(it.price) || 0);\n  subtotal += line;\n  return `<tr><td>${it.desc || ''}</td><td class=\"r\">${it.qty}</td><td class=\"r\">${money(it.price)}</td><td class=\"r\">${money(line)}</td></tr>`;\n}).join('');\n\nconst taxRate = Number(d.tax_rate) || 0;\nconst tax = subtotal * (taxRate / 100);\nconst total = subtotal + tax;\n\nconst html = `<!doctype html><html><head><meta charset=\"utf-8\"><style>\n  * { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a2e; }\n  body { margin: 40px; font-size: 13px; }\n  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .5px; }\n  .muted { color: #6b7280; }\n  .head { display: flex; justify-content: space-between; margin-bottom: 32px; }\n  .box { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; min-width: 240px; }\n  table { width: 100%; border-collapse: collapse; margin-top: 8px; }\n  th, td { padding: 9px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }\n  th { background: #1a1a2e; color: #fff; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }\n  td.r, th.r { text-align: right; }\n  .totals { margin-top: 14px; width: 280px; margin-left: auto; }\n  .totals td { border: none; padding: 4px 10px; }\n  .grand { font-size: 16px; font-weight: 700; border-top: 2px solid #1a1a2e; }\n  .foot { margin-top: 40px; font-size: 11px; }\n</style></head><body>\n  <div class=\"head\">\n    <div>\n      <h1>FACTURA</h1>\n      <div class=\"muted\">Nº ${d.invoice_number} · ${today}</div>\n    </div>\n    <div class=\"box\">\n      <strong>${d.seller_name}</strong><br>\n      <span class=\"muted\">${d.seller_taxid}</span><br>\n      <span class=\"muted\">${d.seller_address}</span>\n    </div>\n  </div>\n  <div class=\"box\" style=\"margin-bottom:24px\">\n    <span class=\"muted\">Facturar a</span><br>\n    <strong>${d.client_name}</strong> · ${d.client_taxid}<br>\n    <span class=\"muted\">${d.client_email}</span>\n  </div>\n  <table>\n    <thead><tr><th>Concepto</th><th class=\"r\">Cant.</th><th class=\"r\">Precio</th><th class=\"r\">Importe</th></tr></thead>\n    <tbody>${rows}</tbody>\n  </table>\n  <table class=\"totals\">\n    <tr><td>Subtotal</td><td class=\"r\">${money(subtotal)}</td></tr>\n    <tr><td>IVA (${taxRate}%)</td><td class=\"r\">${money(tax)}</td></tr>\n    <tr class=\"grand\"><td>Total</td><td class=\"r\">${money(total)}</td></tr>\n  </table>\n  <div class=\"foot muted\">Gracias por su confianza. Pago a 30 días salvo acuerdo. Generado con n8n + Gotenberg.</div>\n</body></html>`;\n\nconst buff = Buffer.from(html, 'utf8');\nreturn [{\n  json: {\n    invoice_number: d.invoice_number,\n    client_email: d.client_email,\n    client_name: d.client_name,\n    total: money(total)\n  },\n  binary: {\n    index: { data: buff.toString('base64'), mimeType: 'text/html', fileName: 'index.html' }\n  }\n}];"
+      },
+      "id": "a1300000-0000-4000-8000-000000000003",
+      "name": "Render HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://YOUR_GOTENBERG_HOST:3000/forms/chromium/convert/html",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "index"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": { "responseFormat": "file", "outputPropertyName": "data" }
+          }
+        }
+      },
+      "id": "a1300000-0000-4000-8000-000000000004",
+      "name": "HTML -> PDF (Gotenberg)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 380]
+    },
+    {
+      "parameters": {
+        "fromEmail": "billing@example.com",
+        "toEmail": "={{ $('Invoice data').item.json.client_email }}",
+        "subject": "=Factura {{ $('Invoice data').item.json.invoice_number }}",
+        "emailFormat": "text",
+        "text": "=Hola {{ $('Invoice data').item.json.client_name }},\n\nAdjuntamos la factura {{ $('Invoice data').item.json.invoice_number }}.\n\nUn saludo.",
+        "options": {
+          "attachments": "data"
+        }
+      },
+      "id": "a1300000-0000-4000-8000-000000000005",
+      "name": "Email invoice",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1080, 380],
+      "credentials": {
+        "smtp": { "id": "REPLACE_ME", "name": "SMTP account" }
+      }
+    }
+  ],
+  "connections": {
+    "Run manually (or swap for Webhook)": { "main": [[{ "node": "Invoice data", "type": "main", "index": 0 }]] },
+    "Invoice data": { "main": [[{ "node": "Render HTML", "type": "main", "index": 0 }]] },
+    "Render HTML": { "main": [[{ "node": "HTML -> PDF (Gotenberg)", "type": "main", "index": 0 }]] },
+    "HTML -> PDF (Gotenberg)": { "main": [[{ "node": "Email invoice", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

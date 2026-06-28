@@ -9,6 +9,19 @@ Format loosely based on [Keep a Changelog](https://keepachangelog.com/). Dates a
 
 - Nothing pending right now.
 
+## 2026-06-28 — Client / agency toolkit
+
+### Added
+- New template family **`client-agency-toolkit`**: three workflows for freelancers and small
+  agencies.
+  - **Client uptime monitor** (A12): checks a list of client sites every 5 min and sends a Telegram
+    alert only on failures (HTTP ≥ 500 / no response → down, HTTP ≥ 400 → warning).
+  - **Invoice generator** (A13): invoice data → styled HTML → PDF via self-hosted Gotenberg →
+    emailed to the client as an attachment. No paid SaaS.
+  - **Weekly analytics report** (A14): every Monday, pulls visitors / pageviews / top pages / top
+    sources from Plausible and emails an HTML report. Umami notes included.
+  - Bilingual docs (EN/ES), all ship inactive, fully sanitized (placeholders only).
+
 ## 2026-06-28 — Telegram personal assistant
 
 ### Added

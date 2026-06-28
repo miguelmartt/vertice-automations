@@ -1,0 +1,151 @@
+{
+  "name": "A14 - Weekly analytics report (Plausible -> email)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "weeks", "triggerAtDay": [1], "triggerAtHour": 8, "triggerAtMinute": 0 }
+          ]
+        }
+      },
+      "id": "a1400000-0000-4000-8000-000000000001",
+      "name": "Every Monday 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 380]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "c1", "name": "base_url", "value": "https://plausible.io", "type": "string" },
+            { "id": "c2", "name": "site_id", "value": "example.com", "type": "string" },
+            { "id": "c3", "name": "period", "value": "7d", "type": "string" },
+            { "id": "c4", "name": "report_to", "value": "client@example.com", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1400000-0000-4000-8000-000000000002",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [420, 380]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.base_url }}/api/v1/stats/aggregate",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "site_id", "value": "={{ $json.site_id }}" },
+            { "name": "period", "value": "={{ $json.period }}" },
+            { "name": "metrics", "value": "visitors,pageviews,bounce_rate,visit_duration" }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "a1400000-0000-4000-8000-000000000003",
+      "name": "Totals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 280],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_ME", "name": "Plausible API (Bearer)" }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').item.json.base_url }}/api/v1/stats/breakdown",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "site_id", "value": "={{ $('Config').item.json.site_id }}" },
+            { "name": "period", "value": "={{ $('Config').item.json.period }}" },
+            { "name": "property", "value": "event:page" },
+            { "name": "metrics", "value": "visitors" },
+            { "name": "limit", "value": "5" }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "a1400000-0000-4000-8000-000000000004",
+      "name": "Top pages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 420],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_ME", "name": "Plausible API (Bearer)" }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config').item.json.base_url }}/api/v1/stats/breakdown",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "site_id", "value": "={{ $('Config').item.json.site_id }}" },
+            { "name": "period", "value": "={{ $('Config').item.json.period }}" },
+            { "name": "property", "value": "visit:source" },
+            { "name": "metrics", "value": "visitors" },
+            { "name": "limit", "value": "5" }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "a1400000-0000-4000-8000-000000000005",
+      "name": "Top sources",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 420],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_ME", "name": "Plausible API (Bearer)" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a readable weekly report from the three Plausible calls.\n// Works with Plausible Cloud and self-hosted; Umami needs minor field tweaks (see README).\nconst cfg = $('Config').item.json;\nconst agg = ($('Totals').item.json.results) || {};\nconst pages = ($('Top pages').item.json.results) || [];\nconst sources = ($('Top sources').item.json.results) || [];\n\nconst num = (x) => (x && x.value != null ? x.value : 0);\nconst visitors = num(agg.visitors);\nconst pageviews = num(agg.pageviews);\nconst bounce = num(agg.bounce_rate);\nconst durSec = num(agg.visit_duration);\nconst dur = `${Math.floor(durSec / 60)}m ${Math.round(durSec % 60)}s`;\n\nconst pagesHtml = pages.map((p) => `<tr><td>${p.page}</td><td class=\"r\">${p.visitors}</td></tr>`).join('') || '<tr><td colspan=\"2\">Sin datos</td></tr>';\nconst sourcesHtml = sources.map((s) => `<tr><td>${s.source}</td><td class=\"r\">${s.visitors}</td></tr>`).join('') || '<tr><td colspan=\"2\">Sin datos</td></tr>';\n\nconst html = `<!doctype html><html><head><meta charset=\"utf-8\"><style>\n  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color:#1a1a2e; }\n  h2 { margin:0 0 2px; }\n  .muted { color:#6b7280; }\n  .cards { display:flex; gap:12px; margin:18px 0; }\n  .card { background:#f8fafc; border:1px solid #e5e7eb; border-radius:8px; padding:12px 16px; flex:1; }\n  .card .n { font-size:22px; font-weight:700; }\n  table { width:100%; border-collapse:collapse; margin:6px 0 18px; }\n  th,td { padding:7px 9px; border-bottom:1px solid #e5e7eb; text-align:left; font-size:13px; }\n  th { background:#1a1a2e; color:#fff; font-size:11px; text-transform:uppercase; }\n  td.r,th.r { text-align:right; }\n</style></head><body>\n  <h2>Informe semanal · ${cfg.site_id}</h2>\n  <div class=\"muted\">Periodo: últimos ${cfg.period}</div>\n  <div class=\"cards\">\n    <div class=\"card\"><div class=\"muted\">Visitantes</div><div class=\"n\">${visitors}</div></div>\n    <div class=\"card\"><div class=\"muted\">Páginas vistas</div><div class=\"n\">${pageviews}</div></div>\n    <div class=\"card\"><div class=\"muted\">Rebote</div><div class=\"n\">${bounce}%</div></div>\n    <div class=\"card\"><div class=\"muted\">Duración media</div><div class=\"n\">${dur}</div></div>\n  </div>\n  <h3>Páginas más vistas</h3>\n  <table><thead><tr><th>Página</th><th class=\"r\">Visitantes</th></tr></thead><tbody>${pagesHtml}</tbody></table>\n  <h3>Fuentes de tráfico</h3>\n  <table><thead><tr><th>Fuente</th><th class=\"r\">Visitantes</th></tr></thead><tbody>${sourcesHtml}</tbody></table>\n  <div class=\"muted\" style=\"font-size:11px\">Generado con n8n + Plausible.</div>\n</body></html>`;\n\nreturn [{ json: { report_to: cfg.report_to, site_id: cfg.site_id, html } }];"
+      },
+      "id": "a1400000-0000-4000-8000-000000000006",
+      "name": "Format report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 420]
+    },
+    {
+      "parameters": {
+        "fromEmail": "reports@example.com",
+        "toEmail": "={{ $json.report_to }}",
+        "subject": "=Informe semanal — {{ $json.site_id }}",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "a1400000-0000-4000-8000-000000000007",
+      "name": "Email report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1300, 420],
+      "credentials": {
+        "smtp": { "id": "REPLACE_ME", "name": "SMTP account" }
+      }
+    }
+  ],
+  "connections": {
+    "Every Monday 08:00": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Totals", "type": "main", "index": 0 }]] },
+    "Totals": { "main": [[{ "node": "Top pages", "type": "main", "index": 0 }]] },
+    "Top pages": { "main": [[{ "node": "Top sources", "type": "main", "index": 0 }]] },
+    "Top sources": { "main": [[{ "node": "Format report", "type": "main", "index": 0 }]] },
+    "Format report": { "main": [[{ "node": "Email report", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}
