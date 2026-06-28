@@ -1,0 +1,42 @@
+{
+  "name": "VPS snapshot (read) — tool sub-workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "name": "When called by agent",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "sudo -n /opt/vertiguard/snapshot.sh"
+      },
+      "id": "c1000000-0000-4000-8000-000000000002",
+      "name": "VPS snapshot (SSH)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "sshPrivateKey": { "id": "REPLACE_ME", "name": "VPS SSH" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Return the snapshot to the agent. Pass the raw JSON string through;\n// the agent reads it as the tool result.\nconst out = ($input.first().json.stdout || '').toString().trim();\nreturn [{ json: { snapshot: out } }];"
+      },
+      "id": "c1000000-0000-4000-8000-000000000003",
+      "name": "Return snapshot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "When called by agent": { "main": [[{ "node": "VPS snapshot (SSH)", "type": "main", "index": 0 }]] },
+    "VPS snapshot (SSH)": { "main": [[{ "node": "Return snapshot", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false,
+  "pinData": {}
+}

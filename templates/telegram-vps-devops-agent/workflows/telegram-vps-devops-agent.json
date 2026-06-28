@@ -1,0 +1,607 @@
+{
+  "name": "VertiGuard DevOps agent (Telegram menu + control)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "id": "f1",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -60,
+        400
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Allowlist: only this chat id may use the bot (it controls your server).\n// Replace 0 with YOUR numeric Telegram chat id (get it from @userinfobot).\nconst ALLOWED_CHAT_ID = 0;\nconst u = $('Telegram Trigger').first().json;\nconst cq = u.callback_query;\nconst msg = u.message;\nlet chatId, kind, text = '', data = '';\nif (cq) { chatId = cq.message && cq.message.chat && cq.message.chat.id; data = cq.data || ''; kind = 'callback'; }\nelse if (msg) { chatId = msg.chat && msg.chat.id; text = (msg.text || '').trim(); const c = text.toLowerCase(); kind = (c === '/menu' || c === '/start' || c.startsWith('/menu@') || c.startsWith('/start@')) ? 'menu' : 'text'; }\nelse { return []; }\nif (ALLOWED_CHAT_ID && chatId !== ALLOWED_CHAT_ID) return [];\nreturn [{ json: { kind, text, data, chatId } }];"
+      },
+      "id": "f2",
+      "name": "Guard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 3,
+        "output": "={{ ({menu:0, callback:1, text:2})[$json.kind] }}"
+      },
+      "id": "f3",
+      "name": "Route",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        380,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Guard').first().json.chatId;\nconst kb = { inline_keyboard: [\n  [{ text: 'Estado del servidor', callback_data: 'r:estado' }],\n  [{ text: 'Disco', callback_data: 'r:disco' }, { text: 'RAM', callback_data: 'r:ram' }, { text: 'Uptime', callback_data: 'r:uptime' }],\n  [{ text: 'SSL', callback_data: 'r:ssl' }, { text: 'Fail2ban', callback_data: 'r:f2b' }, { text: 'Backups', callback_data: 'r:backups' }],\n  [{ text: 'Reiniciar nginx', callback_data: 'c:nginx' }, { text: 'Reiniciar n8n', callback_data: 'c:n8n' }],\n  [{ text: 'Reiniciar MariaDB', callback_data: 'c:mariadb' }, { text: 'Desbanear IP', callback_data: 'c:unban' }]\n] };\nreturn [{ json: { payload: { chat_id: chatId, text: 'Menu DevOps. Elige una opcion:', reply_markup: kb } } }];"
+      },
+      "id": "f4",
+      "name": "Build menu",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const g = $('Guard').first().json;\nreturn [{ json: { action: g.data, chatId: g.chatId } }];"
+      },
+      "id": "f5",
+      "name": "Parse CB",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 6,
+        "output": "={{ $json.action.startsWith('r:') ? 0 : ($json.action === 'c:unban' ? 2 : ($json.action.startsWith('c:') ? 1 : ($json.action.startsWith('ok:') ? 3 : ($json.action === 'x' ? 4 : 5)))) }}"
+      },
+      "id": "f6",
+      "name": "CB Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        840,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "sudo -n /opt/vertiguard/snapshot.sh"
+      },
+      "id": "f7",
+      "name": "Snapshot SSH read",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        200
+      ],
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "VPS SSH"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const action = $('Parse CB').first().json.action;\nconst chatId = $('Parse CB').first().json.chatId;\nlet d = {};\ntry { d = JSON.parse(($input.first().json.stdout || '{}').toString().trim()); } catch (e) {}\nconst s = d.services || {};\nconst ok = v => String(v).startsWith('OK') ? 'OK' : 'FAIL';\nlet text;\nswitch (action) {\n  case 'r:estado':\n    text = ['Estado del servidor', 'nginx: ' + ok(s.nginx), 'MariaDB: ' + ok(s.mariadb), 'n8n: ' + ok(s.n8n), 'Web principal: ' + ok(s.web_main), 'Web app: ' + ok(s.web_app), 'Disco: ' + d.disk_pct + '% | RAM: ' + d.ram_pct + '%', d.uptime || ''].join('\\n');\n    break;\n  case 'r:disco': text = 'Disco: ' + d.disk_pct + '%'; break;\n  case 'r:ram': text = 'RAM: ' + d.ram_pct + '%'; break;\n  case 'r:uptime': text = 'Uptime: ' + (d.uptime || '-'); break;\n  case 'r:ssl': text = 'SSL:\\n' + (d.ssl || []).map(c => c.name + ': ' + c.days + ' dias').join('\\n'); break;\n  case 'r:f2b': { const f = d.fail2ban || {}; text = ['Fail2ban (sshd)', 'Baneadas ahora: ' + f.cur_banned + ' (total ' + f.tot_banned + ')', 'Fallos: ' + f.cur_failed + ' (total ' + f.tot_failed + ')', 'IPs: ' + (f.banned_ips || '-')].join('\\n'); break; }\n  case 'r:backups': { const b = d.backups || {}; text = ['Backups', 'Hoy (' + b.today + '): ' + (b.today_count > 0 ? 'OK' : 'sin copia aun'), 'Ultima: ' + (b.newest || '-')].join('\\n'); break; }\n  default: text = 'Opcion no reconocida.';\n}\nreturn [{ json: { payload: { chat_id: chatId, text } } }];"
+      },
+      "id": "f8",
+      "name": "Format read",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const a = $('Parse CB').first().json.action;\nconst chatId = $('Parse CB').first().json.chatId;\nconst labels = { 'c:nginx': 'reiniciar nginx', 'c:n8n': 'reiniciar n8n', 'c:mariadb': 'reiniciar MariaDB' };\nconst okData = { 'c:nginx': 'ok:nginx', 'c:n8n': 'ok:n8n', 'c:mariadb': 'ok:mariadb' };\nconst text = 'Vas a ' + (labels[a] || a) + '. Confirmas?';\nconst kb = { inline_keyboard: [[{ text: 'Confirmar', callback_data: okData[a] }, { text: 'Cancelar', callback_data: 'x' }]] };\nreturn [{ json: { payload: { chat_id: chatId, text, reply_markup: kb } } }];"
+      },
+      "id": "f9",
+      "name": "Build confirm",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "sudo -n /opt/vertiguard/snapshot.sh"
+      },
+      "id": "f10",
+      "name": "Snapshot SSH unban",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        520
+      ],
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "VPS SSH"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Parse CB').first().json.chatId;\nlet d = {};\ntry { d = JSON.parse(($input.first().json.stdout || '{}').toString().trim()); } catch (e) {}\nconst ips = (((d.fail2ban || {}).banned_ips) || '').trim().split(/\\s+/).filter(Boolean);\nif (!ips.length) { return [{ json: { payload: { chat_id: chatId, text: 'No hay IPs baneadas ahora.' } } }]; }\nconst rows = ips.map(ip => [{ text: 'Desbanear ' + ip, callback_data: 'ok:unban:' + ip }]);\nrows.push([{ text: 'Cancelar', callback_data: 'x' }]);\nreturn [{ json: { payload: { chat_id: chatId, text: 'IPs baneadas. Toca para desbanear:', reply_markup: { inline_keyboard: rows } } } }];"
+      },
+      "id": "f11",
+      "name": "Build unban buttons",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const a = $('Parse CB').first().json.action;\nconst chatId = $('Parse CB').first().json.chatId;\nconst map = { 'ok:nginx': 'restart_nginx.sh', 'ok:n8n': 'restart_n8n.sh', 'ok:mariadb': 'restart_mariadb.sh' };\nlet cmd;\nif (a.startsWith('ok:unban:')) { const ip = a.slice(9); cmd = 'sudo -n /opt/vertiguard/unban_ip.sh ' + ip; }\nelse if (map[a]) { cmd = 'sudo -n /opt/vertiguard/' + map[a]; }\nelse { cmd = 'echo {}'; }\nreturn [{ json: { command: cmd, chatId } }];"
+      },
+      "id": "f12",
+      "name": "Build control cmd",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.command }}"
+      },
+      "id": "f13",
+      "name": "Control SSH",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        680
+      ],
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "VPS SSH"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Build control cmd').first().json.chatId;\nlet d = {};\ntry { d = JSON.parse(($input.first().json.stdout || '{}').toString().trim()); } catch (e) {}\nlet text;\nif (d.action === 'unban_ip') { text = d.ok ? ('IP desbaneada: ' + d.ip) : ('No se pudo desbanear: ' + (d.error || '?')); }\nelse if (d.action) { const name = ({ restart_nginx: 'nginx', restart_n8n: 'n8n', restart_mariadb: 'MariaDB' })[d.action] || d.action; text = d.ok ? (name + ' reiniciado correctamente (' + d.state + ').') : (name + ' fallo al reiniciar (' + (d.state || '?') + ').'); }\nelse { text = 'Accion ejecutada.'; }\nreturn [{ json: { payload: { chat_id: chatId, text } } }];"
+      },
+      "id": "f14",
+      "name": "Format control result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Parse CB').first().json.chatId;\nreturn [{ json: { payload: { chat_id: chatId, text: 'Cancelado.' } } }];"
+      },
+      "id": "f15",
+      "name": "Build cancel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        840
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Guard').item.json.text }}",
+        "options": {
+          "systemMessage": "You are the DevOps assistant for the user's self-hosted VPS, reached over Telegram. When the user asks about the server's health (services, disk, RAM, uptime, SSL, fail2ban/attacks, backups), call the get_vps_status tool for a live snapshot and answer using that data. To run quick actions or see buttons (restart services, unban IP, check status), tell them to send /menu. Answer in the user's language, concise, plain text, no emojis. For unrelated questions, just help."
+        }
+      },
+      "id": "f16",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        620,
+        940
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "id": "f17",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        520,
+        1140
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REPLACE_ME",
+          "name": "Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Guard').item.json.chatId }}",
+        "contextWindowLength": 10
+      },
+      "id": "f18",
+      "name": "Conversation memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        680,
+        1140
+      ]
+    },
+    {
+      "parameters": {
+        "name": "get_vps_status",
+        "description": "Fetch a LIVE read-only snapshot of the VPS (services, disk %, RAM %, uptime, SSL days, fail2ban, backups). Call when the user asks about the server. No input.",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SUBWORKFLOW_ID",
+          "mode": "id"
+        }
+      },
+      "id": "f19",
+      "name": "get_vps_status",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        840,
+        1140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatId = $('Guard').first().json.chatId;\nconst out = ($input.first().json.output || 'Sin respuesta.').toString();\nreturn [{ json: { payload: { chat_id: chatId, text: out } } }];"
+      },
+      "id": "f20",
+      "name": "Text payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        940
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.telegram.org/botREPLACE_BOT_TOKEN/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {}
+      },
+      "id": "f21",
+      "name": "TG send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard": {
+      "main": [
+        [
+          {
+            "node": "Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route": {
+      "main": [
+        [
+          {
+            "node": "Build menu",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse CB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build menu": {
+      "main": [
+        [
+          {
+            "node": "TG send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CB": {
+      "main": [
+        [
+          {
+            "node": "CB Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CB Router": {
+      "main": [
+        [
+          {
+            "node": "Snapshot SSH read",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build confirm",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Snapshot SSH unban",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build control cmd",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build cancel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Snapshot SSH read": {
+      "main": [
+        [
+          {
+            "node": "Format read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format read": {
+      "main": [
+        [
+          {
+            "node": "TG send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build confirm": {
+      "main": [
+        [
+          {
+            "node": "TG send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snapshot SSH unban": {
+      "main": [
+        [
+          {
+            "node": "Build unban buttons",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build unban buttons": {
+      "main": [
+        [
+          {
+            "node": "TG send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build control cmd": {
+      "main": [
+        [
+          {
+            "node": "Control SSH",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Control SSH": {
+      "main": [
+        [
+          {
+            "node": "Format control result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format control result": {
+      "main": [
+        [
+          {
+            "node": "TG send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build cancel": {
+      "main": [
+        [
+          {
+            "node": "TG send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Text payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text payload": {
+      "main": [
+        [
+          {
+            "node": "TG send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_vps_status": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {}
+}

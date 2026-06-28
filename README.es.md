@@ -15,8 +15,9 @@ su(s) JSON de workflow, los scripts auxiliares y su propio README. Coge solo lo 
 | Plantilla | Qué hace | Stack |
 |---|---|---|
 | [`vertiguard-vps-monitoring`](templates/vertiguard-vps-monitoring/) | **VertiGuard** — suite de 8 workflows para monitorizar un VPS autoalojado (servicios, disco/RAM, SSL, backups, fail2ban, actualizaciones, uptime externo y `/status` bajo demanda) con avisos por Telegram. | n8n · SSH · Telegram |
+| [`telegram-vps-devops-agent`](templates/telegram-vps-devops-agent/) | Maneja tu VPS desde Telegram — charla con un agente IA (Gemini) o usa un `/menu` de botones para consultar estado y ejecutar acciones de control (reiniciar servicios, desbanear IP) con un paso de confirmación. Reutiliza los scripts de VertiGuard. | n8n · LangChain · Gemini · SSH · Telegram |
 
-_Se irán añadiendo más plantillas (asistente IA por Telegram, digests RSS, registro de gastos, guardar-para-leer…)._
+_Se irán añadiendo más plantillas (digests RSS, registro de gastos, guardar-para-leer…)._
 
 ---
 
