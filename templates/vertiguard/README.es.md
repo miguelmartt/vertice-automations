@@ -1,8 +1,8 @@
-# VertiGuard — monitorización del VPS y bot DevOps en Telegram
+# VertiGuard — monitorización del VPS y un bot de Telegram
 
-VertiGuard vigila un servidor Linux propio y te avisa por Telegram **solo cuando algo cambia**. Un
-bot DevOps te deja consultar el servidor y hacer unas pocas acciones seguras desde el móvil, y los
-avisos de UptimeRobot también pueden pasar por él.
+VertiGuard vigila un servidor Linux propio a través de **un solo bot de Telegram**: te avisa **solo
+cuando algo cambia**, te manda un **parte diario** con todo lo que importa y atiende **comandos** y un
+panel de botones para consultar el servidor y hacer unas pocas acciones seguras desde el móvil.
 
 Es un servicio pequeño de Python (solo librería estándar, nada que instalar con `pip`) más unos
 cuantos scripts de root a los que llama mediante una regla de `sudo` muy acotada.
@@ -13,23 +13,48 @@ cuantos scripts de root a los que llama mediante una regla de `sudo` muy acotada
 
 ## Qué hace
 
-| Comprobación | Cuándo | Avisa |
-|---|---|---|
-| Servicios (unidades de systemd) y webs (HTTP 2xx/3xx) | cada 5 min | cuando algo cae o vuelve |
-| Disco `/` y RAM por encima de un umbral (80 % por defecto) | cada hora | al cruzar el umbral, en los dos sentidos |
-| Certificados de Let's Encrypt a punto de caducar (15 días por defecto) | cada día, 09:00 | cuando uno se acerca y cuando se renueva |
-| La copia de hoy en un remoto de rclone | cada día, 06:00 | cuando falta y cuando vuelve |
-| Informe de una jail de fail2ban | cada día, 09:00 | siempre (un resumen corto) |
-| Actualizaciones pendientes (dnf o apt) | los lunes, 09:00 | siempre |
-| Una comprobación que no puede ejecutarse (falla un script, se agota el tiempo…) | — | al empezar a fallar y al volver a funcionar |
+**Avisos cuando algo cambia**, en los dos sentidos (cuando falla y cuando vuelve), sin repetirse:
 
-**Bot DevOps** (opcional): envía `/menu` y tendrás botones para el estado del servidor, disco, RAM,
-uptime, SSL, fail2ban y copias, para reiniciar los servicios que permitas (con un paso de
-*Confirmar*) y para desbanear una IP. Cualquier otro mensaje va a **Gemini**, que puede leer el
-estado del servidor en directo pero no puede cambiar nada. El bot solo atiende a tu chat.
+| Comprobación | Cuándo |
+|---|---|
+| Servicios (unidades de systemd) y webs (HTTP 2xx/3xx) | cada 5 min |
+| Disco(s) y RAM por encima de un umbral (80 % por defecto) | cada hora |
+| Certificados de Let's Encrypt a punto de caducar (15 días por defecto) | cada día |
+| La copia de hoy en un remoto de rclone | cada día, 06:00 |
+| Una comprobación que no puede ejecutarse (falla un script, se agota el tiempo…) | al empezar a fallar y al volver a funcionar |
 
-**Webhook de UptimeRobot** (opcional): un monitor externo detecta lo que el propio servidor no puede
-(que se caiga la máquina entera). VertiGuard recibe su webhook y reenvía el aviso al mismo chat.
+**Parte diario** (a las 09:00 por defecto), un solo mensaje con:
+
+- un semáforo general: 🟢 todo en orden, 🟡 avisos o 🔴 incidencias, con el motivo;
+- servicios y webs, con su tiempo de respuesta;
+- CPU, RAM y disco con barras, carga y tiempo encendido;
+- seguridad de las últimas 24 h: IPs bloqueadas por fail2ban, baneos nuevos, intentos fallidos de SSH, accesos SSH y el último;
+- la copia de hoy con su tamaño y cuántas hay guardadas;
+- certificados (el que antes caduca) y contenedores de Docker con su memoria;
+- actualizaciones pendientes, cuántas son de seguridad y si hace falta reiniciar para aplicar lo instalado.
+
+Lleva los botones 🔄 *Actualizar* y 📋 *Menú*.
+
+**Comandos**, registrados en el menú «/» de Telegram (con `LANGUAGE=es` salen en español; los nombres en inglés también funcionan):
+
+| Comando | Muestra |
+|---|---|
+| `/parte` | el parte completo, ahora |
+| `/servicios` | cada servicio y web, con tiempos de respuesta |
+| `/recursos` | CPU, RAM, swap, cada disco, carga, tiempo encendido, sistema y los procesos que más memoria usan |
+| `/seguridad` | fail2ban (ahora, 24 h y total), accesos SSH e intentos fallidos, últimos accesos e IPs bloqueadas |
+| `/copias` | la copia de hoy y las últimas, con tamaño y fecha |
+| `/ssl` | cada certificado, días que le quedan y fecha de caducidad |
+| `/docker` | contenedores, estado, CPU y memoria |
+| `/actualizaciones` | paquetes pendientes, de seguridad, si hay que reiniciar y cómo instalarlos |
+| `/menu` | un panel de botones que abre cada sección en el mismo mensaje |
+| `/reiniciar` | reiniciar uno de los servicios que permitas, tras confirmar |
+| `/desbanear` | sacar una IP de fail2ban |
+| `/ayuda` | todo lo anterior |
+
+Cualquier otro mensaje va a **Gemini** (opcional), que puede leer el estado del servidor en directo
+pero no puede cambiar nada. El bot solo atiende a tu chat. Los avisos de **UptimeRobot** también
+pueden llegar por él.
 
 Todos los mensajes están en inglés y en español (`LANGUAGE=en|es`).
 
@@ -39,19 +64,22 @@ Todos los mensajes están en inglés y en español (`LANGUAGE=en|es`).
 
 ```
 /opt/vertiguard/app/vertiguard.py  (usuario: vertiguard, systemd: vertiguard.service)
- ├─ alerts       planificador → sudo /opt/vertiguard/<sonda>.sh → JSON → Telegram si ha cambiado
- ├─ bot          long polling de Telegram → botones de /menu o Gemini → sondas
+ ├─ alerts       planificador → sudo /opt/vertiguard/<sonda>.sh → JSON → Telegram si ha cambiado; parte diario
+ ├─ bot          long polling de Telegram → comandos, botones (editan el mismo mensaje), Gemini → sondas
  └─ uptimerobot  http://127.0.0.1:<puerto>/<ruta> ← nginx ← UptimeRobot
 ```
 
-- Las **sondas** (`/opt/vertiguard/*.sh`) leen el servidor y escriben una línea de JSON. Corren como
-  root gracias a una sola regla de sudoers: `vertiguard ALL=(root) NOPASSWD: /opt/vertiguard/*.sh`.
-  El usuario del servicio puede ejecutar esos scripts y nada más.
+- Las **sondas** (`/opt/vertiguard/*.sh`) leen el servidor y escriben una línea de JSON: servicios,
+  sistema, certificados, fail2ban, accesos SSH, copias, Docker y actualizaciones. Corren como root
+  gracias a una sola regla de sudoers: `vertiguard ALL=(root) NOPASSWD: /opt/vertiguard/*.sh`. El
+  usuario del servicio puede ejecutar esos scripts y nada más. Varias se lanzan en paralelo, así que un
+  comando contesta en un segundo o dos; la de actualizaciones es lenta y se guarda 6 horas
+  (*Actualizar* la fuerza).
 - Lo que miran las sondas se configura en `/etc/vertiguard/probes.conf`. Se carga como root, así que
   las sondas se niegan a ejecutarse si ese fichero (o su carpeta) no es de root o lo puede escribir
   otro usuario.
 - Solo dos acciones cambian algo: `restart_service.sh` (solo las unidades de `RESTARTABLE`) y
-  `unban_ip.sh` (valida la IP). El bot siempre pide confirmación antes de reiniciar.
+  `unban_ip.sh` (valida la IP). El bot siempre pregunta antes de reiniciar.
 - El bot usa **long polling**: sin webhook y sin abrir puertos para Telegram. El webhook de
   UptimeRobot escucha solo en `127.0.0.1`.
 - Lo último que se avisó se guarda en `/var/lib/vertiguard/state.json`, para no repetir avisos tras
@@ -63,10 +91,11 @@ Todos los mensajes están en inglés y en español (`LANGUAGE=en|es`).
 
 - Linux con systemd, `sudo`, `curl`, `openssl` y **Python 3.9+** (lo traen AlmaLinux/RHEL 9,
   Debian 11+ y Ubuntu 22.04+).
-- Opcional: fail2ban, rclone (para comprobar las copias), certificados de Let's Encrypt, una clave de
-  Google AI Studio (para el chat con Gemini) y una cuenta de UptimeRobot.
-- Uno o dos bots de Telegram creados con [@BotFather](https://t.me/BotFather) y tu chat ID
-  (pregúntaselo a [@userinfobot](https://t.me/userinfobot)).
+- Opcional, cada uno añade su parte al parte: fail2ban, rclone (copias), Let's Encrypt, Docker,
+  journald (accesos SSH), dnf o apt (actualizaciones), una clave de Google AI Studio (Gemini) y una
+  cuenta de UptimeRobot.
+- Un bot de Telegram creado con [@BotFather](https://t.me/BotFather) y tu chat ID (pregúntaselo a
+  [@userinfobot](https://t.me/userinfobot)).
 
 ---
 
@@ -97,23 +126,26 @@ pisa). Todavía no arranca nada.
 
    | Ajuste | Para qué |
    |---|---|
-   | `TELEGRAM_CHAT_ID` | tu chat ID; ahí llegan los avisos y es el único chat al que responde el bot |
-   | `ALERTS_BOT_TOKEN` | bot que manda los avisos |
-   | `DEVOPS_BOT_TOKEN` | bot de `/menu` y Gemini; vacío = sin bot DevOps (puede ser el mismo bot) |
-   | `GEMINI_API_KEY`, `GEMINI_MODEL` | sin clave, el bot solo ofrece `/menu` |
+   | `TELEGRAM_CHAT_ID` | tu chat ID; ahí llega todo y es el único chat al que responde el bot |
+   | `BOT_TOKEN` | el bot: avisos, parte, comandos y botones |
+   | `COMMANDS` | `off` = el bot solo manda avisos y el parte |
+   | `SERVER_NAME` | nombre que sale en los mensajes (por defecto, el hostname) |
+   | `GEMINI_API_KEY`, `GEMINI_MODEL` | sin clave, solo comandos y botones |
    | `WEBHOOK_PORT`, `WEBHOOK_PATH` | webhook de UptimeRobot en `127.0.0.1`; puerto vacío = apagado |
-   | `LANGUAGE`, `TIMEZONE` | `en`/`es`; zona horaria de los informes diarios |
-   | `RESOURCE_ALERT_PCT`, `SSL_ALERT_DAYS`, `REPORT_HOUR`, `BACKUP_CHECK_HOUR` | umbrales y horas |
+   | `LANGUAGE`, `TIMEZONE` | `en`/`es`; zona horaria del parte y de las horas que se muestran |
+   | `REPORT_HOUR` | hora del parte diario (0-23), u `off` |
+   | `BACKUP_CHECK_HOUR`, `RESOURCE_ALERT_PCT`, `SSL_ALERT_DAYS` | hora de revisar copias y umbrales |
 
 3. **Prueba una sonda** como el usuario del servicio y arráncalo:
 
    ```bash
-   sudo -u vertiguard sudo -n /opt/vertiguard/check_services.sh
+   sudo -u vertiguard sudo -n /opt/vertiguard/system.sh
    sudo systemctl enable --now vertiguard
    journalctl -u vertiguard -f
    ```
 
-   El log dice qué partes están en marcha (`alerts, bot, uptimerobot`). Manda `/menu` al bot DevOps.
+   El log dice qué partes están en marcha (`alerts, bot, uptimerobot`). Abre el bot en Telegram, manda
+   `/menu` y escribe `/` para ver todos los comandos.
 
 ### UptimeRobot (opcional)
 
@@ -136,6 +168,10 @@ pisa). Todavía no arranca nada.
 cd vertice-automations && git pull && sudo bash templates/vertiguard/install.sh   # conserva tu configuración
 ```
 
+Si vienes de la primera versión en Python (dos bots): `ALERTS_BOT_TOKEN` se sigue leyendo como
+`BOT_TOKEN` y `DEVOPS_BOT_TOKEN` ya no se usa, porque los comandos viven ahora en el mismo bot que los
+avisos.
+
 Para quitarlo: `systemctl disable --now vertiguard` y borra `/etc/systemd/system/vertiguard.service`,
 `/etc/sudoers.d/vertiguard`, `/opt/vertiguard`, `/etc/vertiguard`, `/var/lib/vertiguard` y el usuario.
 
@@ -144,8 +180,8 @@ Para quitarlo: `systemctl disable --now vertiguard` y borra `/etc/systemd/system
 Los flujos de n8n siguen en la etiqueta [`n8n-final`](https://github.com/miguelmartt/vertice-automations/tree/n8n-final).
 Las sondas y la regla de sudoers son la misma idea, así que el cambio consiste en parar los flujos de
 n8n, ejecutar el instalador, rellenar los dos ficheros de configuración y arrancar el servicio. El
-bot DevOps quita solo el webhook que n8n le había puesto. Después, borra la clave SSH con la que n8n
-entraba como `vertiguard`: ya no la necesita nadie.
+bot quita solo el webhook que n8n le había puesto. Después, borra la clave SSH con la que n8n entraba
+como `vertiguard`: ya no la necesita nadie.
 
 ## Tests
 

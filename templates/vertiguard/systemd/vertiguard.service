@@ -1,5 +1,5 @@
 [Unit]
-Description=VertiGuard: VPS alerts, DevOps bot and UptimeRobot webhook on Telegram
+Description=VertiGuard: VPS alerts, daily report and Telegram bot
 Wants=network-online.target
 After=network-online.target
 

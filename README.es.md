@@ -16,7 +16,7 @@ que necesites.
 
 | Plantilla | Qué hace | Habla con |
 |---|---|---|
-| [`vertiguard`](templates/vertiguard/) | **VertiGuard**: vigila un VPS (servicios, webs, disco/RAM, SSL, copias, fail2ban, actualizaciones) y avisa por Telegram solo cuando algo cambia. Incluye un bot DevOps (botones de `/menu` con acciones confirmadas y chat con Gemini) y un webhook para UptimeRobot. | Telegram · Gemini · UptimeRobot |
+| [`vertiguard`](templates/vertiguard/) | **VertiGuard**: vigila un VPS con un solo bot de Telegram: avisa solo cuando algo cambia, manda un parte diario (servicios, recursos, seguridad, copias, SSL, Docker, actualizaciones) y tiene comandos y un panel de botones para consultarlo y actuar desde el móvil, con Gemini para preguntas en tus palabras. Incluye webhook para UptimeRobot. | Telegram · Gemini · UptimeRobot |
 | [`form-email-to-telegram`](templates/form-email-to-telegram/) | Mensaje en Telegram en cuanto alguien envía el formulario de contacto de tu web: vigila el buzón por IMAP, sin tocar la web. | IMAP · Telegram |
 | [`telegram-personal-assistant`](templates/telegram-personal-assistant/) | Un asistente personal en Telegram: resumen del correo por la mañana, agenda del día, noticias de tus RSS elegidas por IA, registro de gastos y un guardar-para-leer que resume cualquier enlace. | Gmail · Calendar · Sheets · Gemini · Telegram |
 | [`client-agency-toolkit`](templates/client-agency-toolkit/) | Para freelancers y agencias: monitor de uptime de las webs de tus clientes, generador de facturas (JSON → HTML → PDF → email) e informe semanal de analítica por correo. | Plausible · Gotenberg · SMTP · Telegram |

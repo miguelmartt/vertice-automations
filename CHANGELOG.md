@@ -9,6 +9,26 @@ Format loosely based on [Keep a Changelog](https://keepachangelog.com/). Dates a
 
 - Nothing pending right now.
 
+## 2026-10-30 — VertiGuard: one bot, commands and a daily report
+
+### Changed
+- **`vertiguard`** works through **one bot** (`BOT_TOKEN`): alerts, the daily report, commands and
+  buttons. `ALERTS_BOT_TOKEN` is still read; `DEVOPS_BOT_TOKEN` is no longer used.
+- **Daily report** at `REPORT_HOUR` (or `off`) with an overall light, services and response times,
+  CPU/RAM/disk bars, security in the last 24 h (bans, failed attempts, SSH logins), backup size,
+  certificates, Docker and pending security updates or a needed reboot. It replaces the separate
+  fail2ban and updates messages.
+- **Commands** registered in Telegram's «/» menu, in the configured language (English names always
+  work): report, services, resources, security, backups, ssl, docker, updates, menu, restart, unban,
+  help. The `/menu` panel and the *Refresh* buttons edit the same message.
+- Messages in Telegram HTML; `telegram.py` gains `html=True` and `edit()` (copied to every template).
+
+### Added
+- Probes `system.sh` (replaces `disk_ram.sh`), `ssh_logins.sh` and `docker_status.sh`. Response times
+  in `check_services.sh`, bans of the last 24 h in `fail2ban_report.sh`, every backup with size and
+  date in `backup_watchdog.sh`, security fixes and pending reboot in `updates_check.sh`.
+- Settings `SERVER_NAME` and `COMMANDS`.
+
 ## 2026-10-30 — From n8n workflows to Python services
 
 Every template is now a small Python service that lives on your server, run by systemd. Python 3.9+
