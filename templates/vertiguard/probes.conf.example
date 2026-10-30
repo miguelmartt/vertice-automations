@@ -1,0 +1,23 @@
+# VertiGuard · settings for the root probes in /opt/vertiguard.
+# Installed as /etc/vertiguard/probes.conf. It is a shell file sourced as root, so it must belong to
+# root and not be writable by anyone else (the probes refuse to run otherwise). No secrets here.
+
+# systemd units that must be running (space-separated).
+SERVICES="nginx"
+
+# Websites that must answer with HTTP 2xx or 3xx (space-separated). Empty = none.
+URLS="https://example.com"
+
+# Units the DevOps bot may restart (space-separated). Empty = no restart buttons.
+RESTARTABLE="nginx"
+
+# Let's Encrypt live folder: one sub-folder per certificate.
+LE_LIVE="/etc/letsencrypt/live"
+
+# rclone remote:path where your backups land, and the file name prefix before the date
+# (backup-2026-10-30_0430.tar.gz → prefix "backup-"). Empty remote = no backup check.
+BACKUP_REMOTE=""
+BACKUP_PREFIX="backup-"
+
+# fail2ban jail to report on.
+JAIL="sshd"

@@ -9,6 +9,36 @@ Format loosely based on [Keep a Changelog](https://keepachangelog.com/). Dates a
 
 - Nothing pending right now.
 
+## 2026-10-30 — From n8n workflows to Python services
+
+Every template is now a small Python service that lives on your server, run by systemd. Python 3.9+
+and the standard library only: nothing to `pip install`, no automation platform to keep running.
+The n8n versions are kept in the [`n8n-final`](https://github.com/miguelmartt/vertice-automations/tree/n8n-final) tag.
+
+### Changed
+- **`vertiguard`** replaces `vertiguard-vps-monitoring` and `telegram-vps-devops-agent`: one
+  service with the scheduled checks, the DevOps bot (`/menu` + Gemini, read-only for the AI) and the
+  UptimeRobot webhook. The root probes stay, now configured in `/etc/vertiguard/probes.conf`, which
+  they refuse to load unless only root can write it. One `restart_service.sh` with an allow-list
+  replaces the per-service restart scripts. New: an alert when a check itself cannot run.
+- **`form-email-to-telegram`**: IMAP watcher as a service, with configurable fields to pull out of
+  the form email and an alert when the mailbox can't be read.
+- **`telegram-personal-assistant`**: the five assistant workflows as one service with a single
+  Telegram bot; Google APIs through a small OAuth refresh-token client plus a one-time helper to get
+  the token.
+- **`client-agency-toolkit`**: uptime monitor (alerts only on status changes) and weekly analytics
+  report (Plausible, or Umami) as a service; the invoice generator as a command
+  (`invoice.py invoice.json [--dry-run]`).
+- Every message in English and Spanish (`LANGUAGE=en|es`).
+
+### Added
+- Unit tests for every template, an idempotent `install.sh`, a systemd unit and an example config.
+- CI: tests on Python 3.9 and 3.12, shellcheck, shared modules kept identical across templates,
+  leaked-secret checks. A `.gitignore` for `.env` files and keys.
+
+### Removed
+- The n8n workflow JSONs (see the `n8n-final` tag) and the SSH key n8n used to reach the server.
+
 ## 2026-06-28 — Client / agency toolkit
 
 ### Added

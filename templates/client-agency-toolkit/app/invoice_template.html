@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="$lang">
+<head>
+<meta charset="utf-8">
+<title>$title $number</title>
+<style>
+  @page { size: A4; }
+  * { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #1a1a2e; }
+  body { margin: 40px; font-size: 13px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .5px; }
+  .muted { color: #6b7280; }
+  .head { display: flex; justify-content: space-between; margin-bottom: 32px; }
+  .box { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px 16px; min-width: 240px; }
+  .client { margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { padding: 9px 10px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  th { background: #1a1a2e; color: #fff; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+  td.r, th.r { text-align: right; }
+  .totals { margin-top: 14px; width: 280px; margin-left: auto; }
+  .totals td { border: none; padding: 4px 10px; }
+  .grand { font-size: 16px; font-weight: 700; border-top: 2px solid #1a1a2e; }
+  .foot { margin-top: 40px; font-size: 11px; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <h1>$title</h1>
+      <div class="muted">$number_line</div>
+    </div>
+    <div class="box">
+      <strong>$seller_name</strong><br>
+      <span class="muted">$seller_taxid</span><br>
+      <span class="muted">$seller_address</span>
+    </div>
+  </div>
+  <div class="box client">
+    <span class="muted">$bill_to</span><br>
+    <strong>$client_name</strong>$client_taxid<br>
+    <span class="muted">$client_email</span>
+  </div>
+  <table>
+    <thead><tr><th>$col_item</th><th class="r">$col_qty</th><th class="r">$col_price</th><th class="r">$col_amount</th></tr></thead>
+    <tbody>$rows</tbody>
+  </table>
+  <table class="totals">
+    <tr><td>$subtotal_label</td><td class="r">$subtotal</td></tr>
+    <tr><td>$tax_label</td><td class="r">$tax</td></tr>
+    <tr class="grand"><td>$total_label</td><td class="r">$total</td></tr>
+  </table>
+  <div class="foot muted">$footer</div>
+</body>
+</html>

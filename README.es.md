@@ -1,7 +1,8 @@
 # vertice-automations
 
-Plantillas reutilizables de **n8n** — listas para importar, documentadas y seguras para autoalojar.
-Mantenido por [Vérticedev](https://verticedev.es). Licencia [MIT](LICENSE).
+Automatizaciones que viven en tu propio servidor: **servicios pequeños de Python gestionados por
+systemd**, sin plataforma de automatización de por medio, sin nada que instalar con `pip` y sin
+cuotas mensuales. Mantenido por [Vérticedev](https://verticedev.es). Licencia [MIT](LICENSE).
 
 > 🇬🇧 Prefer English? Read the [English README](README.md).
 
@@ -9,54 +10,65 @@ Mantenido por [Vérticedev](https://verticedev.es). Licencia [MIT](LICENSE).
 
 ## Qué contiene
 
-Cada automatización vive en su propia carpeta autocontenida dentro de [`templates/`](templates/), con
-su(s) JSON de workflow, los scripts auxiliares y su propio README. Coge solo lo que necesites.
+Cada automatización vive en su propia carpeta autocontenida dentro de [`templates/`](templates/),
+con su código, tests, instalador, unidad de systemd, configuración de ejemplo y README. Coge solo lo
+que necesites.
 
-| Plantilla | Qué hace | Stack |
+| Plantilla | Qué hace | Habla con |
 |---|---|---|
-| [`vertiguard-vps-monitoring`](templates/vertiguard-vps-monitoring/) | **VertiGuard** — suite de 8 workflows para monitorizar un VPS autoalojado (servicios, disco/RAM, SSL, backups, fail2ban, actualizaciones, uptime externo y `/status` bajo demanda) con avisos por Telegram. | n8n · SSH · Telegram |
-| [`telegram-vps-devops-agent`](templates/telegram-vps-devops-agent/) | Maneja tu VPS desde Telegram — charla con un agente IA (Gemini) o usa un `/menu` de botones para consultar estado y ejecutar acciones de control (reiniciar servicios, desbanear IP) con un paso de confirmación. Reutiliza los scripts de VertiGuard. | n8n · LangChain · Gemini · SSH · Telegram |
-| [`form-email-to-telegram`](templates/form-email-to-telegram/) | Recibe un aviso instantáneo en Telegram cuando alguien rellena el formulario de contacto de tu web — vigila el buzón por IMAP, sin tocar el código de la web. | n8n · IMAP · Telegram |
-| [`telegram-personal-assistant`](templates/telegram-personal-assistant/) | Cinco workflows de asistente por Telegram: resumen de email matutino, agenda del día, digest de noticias/RSS con IA, registro de gastos y un guardar-para-leer que resume cualquier enlace. IA en Gemini; datos en Google Sheets. | n8n · Gemini · Gmail · Calendar · Sheets · Telegram |
-| [`client-agency-toolkit`](templates/client-agency-toolkit/) | Tres workflows para freelancers/agencias: monitor de uptime de webs de clientes (aviso por Telegram), generador de facturas (datos → HTML → PDF con Gotenberg → email) y reporte de analytics semanal por email (Plausible/Umami). Sin SaaS de pago. | n8n · HTTP · Gotenberg · Plausible · Telegram · SMTP |
+| [`vertiguard`](templates/vertiguard/) | **VertiGuard**: vigila un VPS (servicios, webs, disco/RAM, SSL, copias, fail2ban, actualizaciones) y avisa por Telegram solo cuando algo cambia. Incluye un bot DevOps (botones de `/menu` con acciones confirmadas y chat con Gemini) y un webhook para UptimeRobot. | Telegram · Gemini · UptimeRobot |
+| [`form-email-to-telegram`](templates/form-email-to-telegram/) | Mensaje en Telegram en cuanto alguien envía el formulario de contacto de tu web: vigila el buzón por IMAP, sin tocar la web. | IMAP · Telegram |
+| [`telegram-personal-assistant`](templates/telegram-personal-assistant/) | Un asistente personal en Telegram: resumen del correo por la mañana, agenda del día, noticias de tus RSS elegidas por IA, registro de gastos y un guardar-para-leer que resume cualquier enlace. | Gmail · Calendar · Sheets · Gemini · Telegram |
+| [`client-agency-toolkit`](templates/client-agency-toolkit/) | Para freelancers y agencias: monitor de uptime de las webs de tus clientes, generador de facturas (JSON → HTML → PDF → email) e informe semanal de analítica por correo. | Plausible · Gotenberg · SMTP · Telegram |
 
-_Se irán añadiendo más plantillas._
+---
+
+## Por qué servicios de Python y no una plataforma
+
+Empezaron siendo flujos de n8n. Como código resultan más fáciles de mantener:
+
+- **Ligeros.** Una plantilla gasta unas decenas de MB de RAM; no hay plataforma, base de datos ni
+  editor que mantener encendidos y actualizados.
+- **Revisables.** Cada cambio es un diff en git, con tests. Nada escondido en un JSON exportado.
+- **Más seguros.** No hay un panel web que guarde todas tus credenciales. Cada servicio corre con su
+  propio usuario de sistema, habla con Telegram por long polling (sin abrir puertos) y guarda sus
+  secretos en un único fichero de root.
+- **Portables.** Python 3.9+ y solo la librería estándar: funcionan en un AlmaLinux 9, Debian o
+  Ubuntu recién instalado.
+
+Las versiones de n8n siguen en la etiqueta [`n8n-final`](https://github.com/miguelmartt/vertice-automations/tree/n8n-final)
+por si aún las quieres.
 
 ---
 
 ## Cómo usar una plantilla
 
-1. Abre la carpeta de la plantilla y lee su README.
-2. En n8n: **Workflows → Import from File** y elige el `*.json` que quieras.
-3. Asigna las credenciales que pida el workflow (p. ej. una clave SSH, un bot de Telegram).
-4. Sustituye los placeholders (ver el README de cada plantilla) y actívalo.
+```bash
+git clone https://github.com/miguelmartt/vertice-automations.git
+cd vertice-automations
+sudo bash templates/<plantilla>/install.sh
+```
 
-Todos los workflows vienen **inactivos** (`"active": false`): nada se ejecuta hasta que tú lo revisas.
+Después rellena `/etc/<servicio>/<servicio>.env` como explica el README de la plantilla y arráncala
+con `systemctl enable --now <servicio>`. Volver a ejecutar el instalador tras un `git pull` actualiza
+el código y conserva tu configuración. Logs: `journalctl -u <servicio> -f`.
 
 ---
 
-## Placeholders y seguridad
+## Seguridad
 
-Estas plantillas están **saneadas**. No contienen hosts, IPs, tokens, chat IDs ni claves reales,
-solo placeholders que tú rellenas:
-
-| Placeholder | Sustitúyelo por |
-|---|---|
-| `YOUR_CHAT_ID` | Tu chat ID de Telegram |
-| `REPLACE_ME` (id de credencial) | Se resuelve solo al asignar credenciales en n8n |
-| `example.com`, `n8n.example.com` | Tus dominios (variables del script) |
-| `b2:my-backups` | Tu propio remoto/ruta de rclone |
-
-Los secretos nunca van al repo: `.gitignore` bloquea claves, `.env` y ficheros de credenciales por defecto.
-La seguridad **no** depende de que estos workflows sean privados — tu protección real son las claves SSH,
-fail2ban y tu firewall, nada de eso se publica aquí.
+Las plantillas están **saneadas**: sin hosts, IPs, tokens, chat IDs ni claves reales, solo
+placeholders (`YOUR_CHAT_ID`, `REPLACE_ME`, `example.com`). Tus secretos van en
+`/etc/<servicio>/<servicio>.env` (modo `640`, solo lo lee el usuario del servicio) y nunca en el
+repo; `.gitignore` bloquea los `.env` y las claves. Donde hace falta root (las sondas de VertiGuard),
+se pasa por una única regla de `sudo` para un conjunto fijo de scripts.
 
 ---
 
 ## Contribuir
 
-Se aceptan PRs — ver [CONTRIBUTING.md](CONTRIBUTING.md). Mantén las contribuciones saneadas (sin secretos
-reales) y los workflows inactivos.
+Los PR son bienvenidos: en [CONTRIBUTING.md](CONTRIBUTING.md) están la estructura y las convenciones
+que sigue cada plantilla.
 
 ## Licencia
 

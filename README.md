@@ -1,6 +1,7 @@
 # vertice-automations
 
-Reusable **n8n** workflow templates — ready to import, documented, and safe to self-host.
+Self-hosted automations that live on your own server: small **Python services run by systemd**,
+with no automation platform in between, nothing to `pip install` and no monthly fees.
 Maintained by [Vérticedev](https://verticedev.es). Licensed under [MIT](LICENSE).
 
 > 🇪🇸 ¿Prefieres español? Lee el [README en español](README.es.md).
@@ -10,53 +11,62 @@ Maintained by [Vérticedev](https://verticedev.es). Licensed under [MIT](LICENSE
 ## What's inside
 
 Each automation lives in its own self-contained folder under [`templates/`](templates/), with its
-workflow JSON(s), any helper scripts, and its own README. Pick the ones you need.
+code, tests, installer, systemd unit, example settings and README. Pick the ones you need.
 
-| Template | What it does | Stack |
+| Template | What it does | Talks to |
 |---|---|---|
-| [`vertiguard-vps-monitoring`](templates/vertiguard-vps-monitoring/) | **VertiGuard** — an 8-workflow suite to monitor a self-hosted VPS (services, disk/RAM, SSL, backups, fail2ban, system updates, external uptime, on-demand `/status`) and alert via Telegram. | n8n · SSH · Telegram |
-| [`telegram-vps-devops-agent`](templates/telegram-vps-devops-agent/) | Run your VPS from Telegram — chat with an AI agent (Gemini) or use a `/menu` of buttons to read status and run control actions (restart services, unban IP) with a Confirm step. Reuses the VertiGuard scripts. | n8n · LangChain · Gemini · SSH · Telegram |
-| [`form-email-to-telegram`](templates/form-email-to-telegram/) | Get an instant Telegram alert when someone submits your website's contact form — watches the mailbox over IMAP, no changes to your site. | n8n · IMAP · Telegram |
-| [`telegram-personal-assistant`](templates/telegram-personal-assistant/) | Five Telegram assistant workflows: morning email digest, calendar agenda, AI news/RSS digest, expense logger, and a read-it-later that summarizes any link. AI on Gemini; data in Google Sheets. | n8n · Gemini · Gmail · Calendar · Sheets · Telegram |
-| [`client-agency-toolkit`](templates/client-agency-toolkit/) | Three workflows for freelancers/agencies: client-site uptime monitor (Telegram alerts), invoice generator (data → HTML → Gotenberg PDF → email), and a weekly analytics report email (Plausible/Umami). No paid SaaS. | n8n · HTTP · Gotenberg · Plausible · Telegram · SMTP |
+| [`vertiguard`](templates/vertiguard/) | **VertiGuard** — watches a VPS (services, websites, disk/RAM, SSL, backups, fail2ban, updates) and alerts on Telegram only when something changes. Includes a DevOps bot (`/menu` buttons with confirmed actions, plus Gemini chat) and an UptimeRobot webhook. | Telegram · Gemini · UptimeRobot |
+| [`form-email-to-telegram`](templates/form-email-to-telegram/) | Instant Telegram message when someone submits your website's contact form — watches the mailbox over IMAP, no changes to your site. | IMAP · Telegram |
+| [`telegram-personal-assistant`](templates/telegram-personal-assistant/) | A personal assistant on Telegram: morning email digest, today's agenda, an AI-picked news digest from your RSS feeds, an expense logger and a read-it-later that summarizes any link. | Gmail · Calendar · Sheets · Gemini · Telegram |
+| [`client-agency-toolkit`](templates/client-agency-toolkit/) | For freelancers and agencies: client-site uptime monitor, invoice generator (JSON → HTML → PDF → email) and a weekly analytics report by email. | Plausible · Gotenberg · SMTP · Telegram |
 
-_More templates are added over time._
+---
+
+## Why plain Python services
+
+These started as n8n workflows. Running them as code turned out simpler to operate:
+
+- **Light.** A template uses a few tens of MB of RAM; there is no platform, database or editor to
+  keep running and updated.
+- **Reviewable.** Every change is a diff in git, with tests. Nothing hides in a JSON export.
+- **Safer.** No web panel holding all your credentials. Each service runs as its own system user,
+  talks to Telegram by long polling (no open ports) and keeps its secrets in one root-owned file.
+- **Portable.** Python 3.9+ standard library only: it runs on a stock AlmaLinux 9, Debian or Ubuntu
+  server.
+
+The n8n versions are kept in the [`n8n-final`](https://github.com/miguelmartt/vertice-automations/tree/n8n-final)
+tag if you still want them.
 
 ---
 
 ## How to use a template
 
-1. Open the template folder and read its README.
-2. In n8n: **Workflows → Import from File** and select the `*.json` you want.
-3. Map the credentials the workflow asks for (e.g. an SSH key, a Telegram bot token).
-4. Replace the placeholders (see each template's README) and activate.
+```bash
+git clone https://github.com/miguelmartt/vertice-automations.git
+cd vertice-automations
+sudo bash templates/<template>/install.sh
+```
 
-All workflows ship **inactive** (`"active": false`) so nothing runs until you review it.
+Then fill in `/etc/<service>/<service>.env` as the template's README explains and start it with
+`systemctl enable --now <service>`. Re-running the installer after a `git pull` updates the code and
+keeps your settings. Logs: `journalctl -u <service> -f`.
 
 ---
 
-## Placeholders & security
+## Security
 
-These templates are **sanitized**. They contain no real hosts, IPs, tokens, chat IDs, or keys —
-only placeholders you fill in:
-
-| Placeholder | Replace with |
-|---|---|
-| `YOUR_CHAT_ID` | Your Telegram chat ID |
-| `REPLACE_ME` (credential id) | Auto-resolved when you map credentials in n8n |
-| `example.com`, `n8n.example.com` | Your own domains (script variables) |
-| `b2:my-backups` | Your own rclone remote/path |
-
-Secrets never belong in the repo: `.gitignore` blocks keys, `.env`, and credential files by default.
-Security does **not** depend on these workflows being private — your real protection is SSH keys,
-fail2ban, and your firewall, none of which are published here.
+The templates are **sanitized**: no real hosts, IPs, tokens, chat IDs or keys, only placeholders
+(`YOUR_CHAT_ID`, `REPLACE_ME`, `example.com`). Your secrets go in `/etc/<service>/<service>.env`
+(mode `640`, readable by the service user only) and never in the repo; `.gitignore` blocks `.env`
+files and keys. Where root access is needed (VertiGuard's probes), it goes through one narrow
+`sudo` rule for a fixed set of scripts.
 
 ---
 
 ## Contributing
 
-PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Keep contributions sanitized (no real secrets)
-and ship workflows inactive.
+PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the layout and conventions every template
+follows.
 
 ## License
 

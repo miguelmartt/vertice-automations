@@ -1,98 +1,89 @@
 # Formulario de contacto (email) → Telegram
 
-Recibe un aviso instantáneo en **Telegram** cada vez que alguien rellena el formulario de contacto de
-tu web — **sin tocar el código de la web**. El formulario ya te manda un correo; este workflow vigila
-ese buzón por **IMAP** y te avisa en cuanto llega un correo que coincide.
+Recibe un mensaje en **Telegram** en cuanto alguien envía el formulario de contacto de tu web,
+**sin tocar el código de la web**. El formulario ya te manda un correo; este servicio pequeño vigila
+ese buzón por **IMAP** y reenvía a tu chat cada correo nuevo del formulario.
+
+Python 3.9+, solo librería estándar, gestionado por systemd.
 
 > 🇬🇧 [English version](README.md)
-
-Ideal cuando tu web (Laravel, WordPress, un servicio de formularios, lo que sea) envía los envíos a un
-buzón pero no quieres meter un webhook dentro de la propia web.
 
 ---
 
 ## Cómo funciona
 
 ```
-Formulario de contacto de la web
-   │  (manda un correo a tu buzón)
-   ▼
-Buzón IMAP ─▶ ¿Es del formulario? ─▶ Formatear aviso ─▶ Avisar a Telegram
-(solo correo       (filtro por             (remitente +        (a tu chat)
- nuevo que coincide) asunto, red de seguridad) asunto + cuerpo)
+Formulario web ──correo──▶ tu buzón ◀──IMAP cada 60 s── form-to-telegram ──▶ Telegram
 ```
 
-- El disparador **IMAP** solo trae correo **no leído** cuyo asunto contenga tu palabra clave
-  (`["UNSEEN", ["SUBJECT", "SUBJECT_KEYWORD"]]`), así ignora todo lo demás del buzón.
-- Un nodo **Filter** revuelve el asunto como red de seguridad.
-- Un nodo **Code** arma un mensaje limpio en texto plano (remitente, asunto, cuerpo).
-- Un nodo **Telegram** lo envía a tu chat. El disparador es IMAP, no Telegram, así que **no** gasta
-  el único trigger activo que admite un bot — puedes reutilizar cualquier bot que ya tengas.
-- El correo que coincide se marca como **leído** tras procesarlo, así nunca te avisa dos veces.
+- Cada `CHECK_EVERY_SECONDS` busca correos **sin leer** cuyo asunto contenga `SUBJECT_KEYWORD`, así
+  que ignora el resto de la bandeja.
+- Cada uno se convierte en un mensaje corto, se manda a tu chat y se **marca como leído**, para que
+  nunca te avise dos veces.
+- Si le dices qué etiquetas usa tu formulario (`FIELDS=Nombre,Email,Teléfono`), saca esos valores
+  (`Nombre: Ana`, o la etiqueta en una línea y el valor en la siguiente). `MESSAGE_START` y
+  `MESSAGE_END` recogen el mensaje libre. Sin ellos, te llegan el asunto y el cuerpo.
+- Si no puede leer el buzón varias veces seguidas (`FAILURES_BEFORE_ALERT`, 5 por defecto), te lo
+  dice una vez, y otra cuando vuelve a funcionar.
+- El bot solo envía mensajes, así que puedes reutilizar cualquier bot que ya tengas.
 
-Un solo workflow:
+Ejemplo de lo que llega:
 
-| Archivo | Función |
+```
+📬 Nuevo contacto de example.com
+
+Nombre: Ana López
+Email: ana@example.com
+Teléfono: 600 000 000
+
+💬 Mensaje:
+Quería presupuesto para una web nueva.
+```
+
+---
+
+## Instalación
+
+```bash
+git clone https://github.com/miguelmartt/vertice-automations.git
+cd vertice-automations
+sudo bash templates/form-email-to-telegram/install.sh
+```
+
+Después edita `/etc/form-to-telegram/form-to-telegram.env`:
+
+| Ajuste | Para qué |
 |---|---|
-| [`workflows/form-email-to-telegram.json`](workflows/form-email-to-telegram.json) | IMAP → filtro → formatea → Telegram |
+| `TELEGRAM_CHAT_ID`, `BOT_TOKEN` | tu chat ID ([@userinfobot](https://t.me/userinfobot)) y un bot de [@BotFather](https://t.me/BotFather) |
+| `IMAP_HOST`, `IMAP_PORT`, `IMAP_USER`, `IMAP_PASSWORD`, `IMAP_FOLDER` | el buzón que recibe los correos del formulario (IMAP con SSL, puerto 993) |
+| `SUBJECT_KEYWORD` | texto que llevan en el asunto los correos del formulario (mejor sin tildes ni emojis) |
+| `SITE_NAME` | opcional, aparece en el título |
+| `FIELDS` | opcional, etiquetas que sacar, separadas por comas y en orden |
+| `MESSAGE_START`, `MESSAGE_END` | opcional, líneas donde empieza y acaba el mensaje libre |
+| `LANGUAGE` | `en` o `es` |
+| `CHECK_EVERY_SECONDS`, `FAILURES_BEFORE_ALERT` | cada cuánto mira y cuándo se queja |
 
-Sale **inactivo** (`"active": false`).
+Arráncalo y mándate una prueba desde el formulario:
 
----
+```bash
+sudo systemctl enable --now form-to-telegram
+journalctl -u form-to-telegram -f
+```
 
-## Puesta en marcha
+El servicio corre con su propio usuario y con el endurecimiento de systemd (`ProtectSystem=strict`,
+`NoNewPrivileges`); solo necesita salir a la red.
 
-### 1. Crea una credencial IMAP en n8n
+## Actualizar
 
-**Credentials → IMAP**, con los datos de tu proveedor de correo. Por ejemplo (IONOS):
+```bash
+cd vertice-automations && git pull && sudo bash templates/form-email-to-telegram/install.sh
+```
 
-| Campo | Valor |
-|---|---|
-| Host | `imap.tu-proveedor.com` (IONOS: `imap.ionos.es`) |
-| Puerto | `993` |
-| SSL/TLS | activado |
-| Usuario | el buzón que recibe los correos del formulario |
-| Contraseña | la contraseña de ese buzón |
+La versión de n8n de esta plantilla sigue en la etiqueta
+[`n8n-final`](https://github.com/miguelmartt/vertice-automations/tree/n8n-final).
 
-### 2. Importa el workflow
+## Tests
 
-n8n → **Workflows → Import from File** → `workflows/form-email-to-telegram.json`.
-
-### 3. Sustituye los placeholders
-
-| Placeholder | Dónde | Sustituir por |
-|---|---|---|
-| `SUBJECT_KEYWORD` | **IMAP mailbox** (`customEmailConfig`) **y** **Is it a form email?** (Filter) | Una palabra que aparezca siempre en el asunto de tus correos de formulario (p. ej. `Contacto`, `Nuevo contacto`) |
-| `YOUR_CHAT_ID` | **Notify Telegram** | Tu chat id numérico de Telegram (con [@userinfobot](https://t.me/userinfobot)) |
-| `REPLACE_ME` (ids de credencial) | nodos IMAP + Telegram | Se resuelve solo al asignar las credenciales |
-
-### 4. Asigna credenciales y activa
-
-Asigna el nodo **IMAP** a tu credencial de buzón y el nodo **Telegram** a tu credencial de bot, y
-**activa** el workflow. Rellena el formulario una vez para probar.
-
----
-
-## Endurecimiento (opcional, recomendado)
-
-En vez de vigilar `INBOX`, crea una **regla en tu proveedor de correo** que mueva los correos del
-formulario a una carpeta dedicada (p. ej. `Leads`), y pon el `mailbox` del nodo IMAP a esa carpeta.
-Así el workflow nunca toca tu bandeja principal y el filtro por asunto pasa a ser opcional.
-
----
-
-## Notas
-
-- El aviso se envía en **texto plano** (sin `parse_mode`) a propósito, para que el contenido del
-  formulario con `_` o `*` no rompa el formato Markdown de Telegram.
-- Los envíos largos se recortan a ~1500 caracteres.
-- Funciona con cualquier proveedor con IMAP (IONOS, Gmail, Zoho, Fastmail, tu propio servidor…).
-
-## Seguridad
-
-- **Saneado** — no hay hosts, buzones, tokens ni chat ids reales en el repo, solo placeholders.
-- La contraseña del buzón vive solo en la credencial de n8n, nunca en el JSON del workflow.
-
-## Licencia
-
-[MIT](../../LICENSE) © [Vérticedev](https://verticedev.es)
+```bash
+cd templates/form-email-to-telegram && python3 -m unittest discover -s tests -t .
+```

@@ -1,0 +1,32 @@
+[Unit]
+Description=Telegram personal assistant (digests, expense logger, read-it-later)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=personal-assistant
+Group=personal-assistant
+ExecStart=/usr/bin/python3 -s /opt/personal-assistant/app/assistant.py /etc/personal-assistant/personal-assistant.env
+Restart=always
+RestartSec=10
+# /var/lib/personal-assistant: the Telegram offset, so a restart never handles a message twice.
+StateDirectory=personal-assistant
+StateDirectoryMode=0750
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+
+# Hardening: it only needs to read its code and config, write its state and reach HTTPS APIs.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

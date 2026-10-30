@@ -1,0 +1,15 @@
+[Unit]
+Description=VertiGuard: VPS alerts, DevOps bot and UptimeRobot webhook on Telegram
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=vertiguard
+Group=vertiguard
+ExecStart=/usr/bin/python3 -s /opt/vertiguard/app/vertiguard.py /etc/vertiguard/vertiguard.env
+Restart=always
+RestartSec=10
+StateDirectory=vertiguard
+
+[Install]
+WantedBy=multi-user.target

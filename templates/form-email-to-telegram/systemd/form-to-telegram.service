@@ -1,0 +1,18 @@
+[Unit]
+Description=Contact form emails forwarded to Telegram
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=form-to-telegram
+Group=form-to-telegram
+ExecStart=/usr/bin/python3 -s /opt/form-to-telegram/app/form_to_telegram.py /etc/form-to-telegram/form-to-telegram.env
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

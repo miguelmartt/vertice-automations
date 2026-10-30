@@ -1,0 +1,18 @@
+# Secrets never go in the repo: real settings live in /etc/<service>/<service>.env on the server.
+*.env
+!*.env.example
+.env*
+!*.env.example
+*.pem
+*.key
+id_*
+*credentials*.json
+*token*.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Invoices generated with --dry-run
+*.pdf

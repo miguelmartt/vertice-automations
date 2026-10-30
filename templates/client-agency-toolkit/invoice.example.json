@@ -1,0 +1,16 @@
+{
+  "invoice_number": "2026-001",
+  "date": "2026-10-30",
+  "currency": "EUR",
+  "tax_rate": 21,
+  "seller_name": "Your Company S.L.",
+  "seller_taxid": "YOUR_TAX_ID",
+  "seller_address": "Street 1, City, Country",
+  "client_name": "Client Name",
+  "client_taxid": "CLIENT_TAX_ID",
+  "client_email": "client@example.com",
+  "items": [
+    { "desc": "Service / hours", "qty": 10, "price": 50 },
+    { "desc": "Setup fee", "qty": 1, "price": 150 }
+  ]
+}

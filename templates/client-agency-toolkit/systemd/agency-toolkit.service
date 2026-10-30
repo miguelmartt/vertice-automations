@@ -1,0 +1,32 @@
+[Unit]
+Description=Agency toolkit: client uptime monitor and weekly analytics report
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agency-toolkit
+Group=agency-toolkit
+ExecStart=/usr/bin/python3 /opt/agency-toolkit/app/toolkit.py /etc/agency-toolkit/agency-toolkit.env
+Restart=always
+RestartSec=10
+# State (last status of each site) in /var/lib/agency-toolkit, passed as $STATE_DIRECTORY.
+StateDirectory=agency-toolkit
+StateDirectoryMode=0750
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+
+# Hardening: the service only reads its code and config and writes its state directory.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

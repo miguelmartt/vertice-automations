@@ -1,98 +1,89 @@
 # Contact form (email) → Telegram
 
-Get an instant **Telegram** alert whenever someone submits the contact form on your website —
-**without touching your site's code**. The form already emails you; this workflow watches that
-mailbox over **IMAP** and pings you the moment a matching email arrives.
+Get a **Telegram** message the moment someone submits the contact form on your website —
+**without touching your site's code**. The form already emails you; this small service watches that
+mailbox over **IMAP** and forwards each new form email to your chat.
+
+Python 3.9+, standard library only, run by systemd.
 
 > 🇪🇸 [Versión en español](README.es.md)
-
-Ideal when your site (Laravel, WordPress, a static form service, anything) sends form submissions to
-a mailbox but you don't want to wire a webhook into the site itself.
 
 ---
 
 ## How it works
 
 ```
-Website contact form
-   │  (sends an email to your mailbox)
-   ▼
-IMAP mailbox ─▶ Is it a form email? ─▶ Format alert ─▶ Notify Telegram
-(only new mail,    (subject filter,        (from +          (to your chat)
- matching subject)  safety net)             subject + body)
+Website form ──email──▶ your mailbox ◀──IMAP every 60 s── form-to-telegram ──▶ Telegram
 ```
 
-- The **IMAP** trigger only fetches **unseen** mail whose subject contains your keyword
-  (`["UNSEEN", ["SUBJECT", "SUBJECT_KEYWORD"]]`), so it ignores everything else in the inbox.
-- A **Filter** node double-checks the subject as a safety net.
-- A **Code** node builds a clean plain-text message (sender, subject, body).
-- A **Telegram** node sends it to your chat. The trigger is IMAP, not Telegram, so it does **not**
-  use up your bot's single active-trigger slot — reuse any existing bot.
-- Matching mail is marked **read** after processing, so you're never notified twice.
+- Every `CHECK_EVERY_SECONDS` it looks for **unread** emails whose subject contains
+  `SUBJECT_KEYWORD`, so the rest of the inbox is ignored.
+- Each match is turned into a short message and sent to your chat, then **marked as read**, so you
+  are never notified twice.
+- If you list the labels your form uses (`FIELDS=Name,Email,Phone`), it pulls those values out
+  (`Name: Ana`, or the label on one line and the value on the next). `MESSAGE_START` /
+  `MESSAGE_END` grab the free-text message. Without them, you get the subject and the body.
+- If the mailbox can't be read several times in a row (`FAILURES_BEFORE_ALERT`, 5 by default), it
+  tells you once, and again when it works.
+- The bot only sends messages, so you can reuse any bot you already have.
 
-One workflow:
+Example of what arrives:
 
-| File | Role |
+```
+📬 New contact from example.com
+
+Name: Ana López
+Email: ana@example.com
+Phone: 600 000 000
+
+💬 Message:
+I'd like a quote for a new website.
+```
+
+---
+
+## Install
+
+```bash
+git clone https://github.com/miguelmartt/vertice-automations.git
+cd vertice-automations
+sudo bash templates/form-email-to-telegram/install.sh
+```
+
+Then edit `/etc/form-to-telegram/form-to-telegram.env`:
+
+| Setting | Meaning |
 |---|---|
-| [`workflows/form-email-to-telegram.json`](workflows/form-email-to-telegram.json) | IMAP → filter → format → Telegram |
+| `TELEGRAM_CHAT_ID`, `BOT_TOKEN` | your chat ID ([@userinfobot](https://t.me/userinfobot)) and a bot from [@BotFather](https://t.me/BotFather) |
+| `IMAP_HOST`, `IMAP_PORT`, `IMAP_USER`, `IMAP_PASSWORD`, `IMAP_FOLDER` | the mailbox that receives the form emails (IMAP over SSL, port 993) |
+| `SUBJECT_KEYWORD` | text the form emails have in their subject (plain ASCII works best) |
+| `SITE_NAME` | optional, shown in the title |
+| `FIELDS` | optional, comma-separated labels to pull out, in order |
+| `MESSAGE_START`, `MESSAGE_END` | optional, lines where the free-text message starts and ends |
+| `LANGUAGE` | `en` or `es` |
+| `CHECK_EVERY_SECONDS`, `FAILURES_BEFORE_ALERT` | how often to check, and when to complain |
 
-Ships **inactive** (`"active": false`).
+Start it and send yourself a test through the form:
 
----
+```bash
+sudo systemctl enable --now form-to-telegram
+journalctl -u form-to-telegram -f
+```
 
-## Setup
+The service runs as its own user with systemd hardening (`ProtectSystem=strict`,
+`NoNewPrivileges`); it needs nothing but network access.
 
-### 1. Create an IMAP credential in n8n
+## Update
 
-**Credentials → IMAP**, with your mail provider's settings. For example (IONOS):
+```bash
+cd vertice-automations && git pull && sudo bash templates/form-email-to-telegram/install.sh
+```
 
-| Field | Value |
-|---|---|
-| Host | `imap.your-provider.com` (IONOS: `imap.ionos.es`) |
-| Port | `993` |
-| SSL/TLS | on |
-| User | the mailbox that receives the form emails |
-| Password | that mailbox's password |
+The n8n version of this template is kept in the
+[`n8n-final`](https://github.com/miguelmartt/vertice-automations/tree/n8n-final) tag.
 
-### 2. Import the workflow
+## Tests
 
-n8n → **Workflows → Import from File** → `workflows/form-email-to-telegram.json`.
-
-### 3. Replace the placeholders
-
-| Placeholder | Where | Replace with |
-|---|---|---|
-| `SUBJECT_KEYWORD` | **IMAP mailbox** (`customEmailConfig`) **and** **Is it a form email?** (Filter) | A word that always appears in your form emails' subject (e.g. `Contact`, `New lead`) |
-| `YOUR_CHAT_ID` | **Notify Telegram** | Your numeric Telegram chat id (from [@userinfobot](https://t.me/userinfobot)) |
-| `REPLACE_ME` (credential ids) | IMAP + Telegram nodes | Auto-resolved when you map credentials |
-
-### 4. Map credentials & activate
-
-Map the **IMAP** node to your mailbox credential and the **Telegram** node to your bot credential,
-then **activate** the workflow. Submit your form once to test.
-
----
-
-## Hardening (optional, recommended)
-
-Instead of watching `INBOX`, create a **filter/rule in your mail provider** that moves form emails to
-a dedicated folder (e.g. `Leads`), then set the IMAP node's `mailbox` to that folder. The workflow
-then never touches your main inbox, and the subject filter becomes optional.
-
----
-
-## Notes
-
-- The alert is sent as **plain text** (no `parse_mode`) on purpose, so form content with `_` or `*`
-  can't break Telegram's Markdown parser.
-- Long submissions are trimmed to ~1500 characters.
-- Works with any provider that offers IMAP (IONOS, Gmail, Zoho, Fastmail, your own server…).
-
-## Security
-
-- **Sanitized** — no real hosts, mailboxes, tokens, or chat ids in this repo, only placeholders.
-- Your mailbox password lives only in the n8n credential, never in the workflow JSON.
-
-## License
-
-[MIT](../../LICENSE) © [Vérticedev](https://verticedev.es)
+```bash
+cd templates/form-email-to-telegram && python3 -m unittest discover -s tests -t .
+```

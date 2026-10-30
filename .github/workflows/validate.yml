@@ -1,0 +1,70 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Unit tests of every template
+        run: |
+          set -e
+          for t in templates/*/; do
+            echo "::group::$t"
+            python -m unittest discover -s "$t/tests" -t "$t" -v
+            echo "::endgroup::"
+          done
+
+  shared-modules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shared modules are identical copies of templates/vertiguard/app
+        run: |
+          set -e
+          status=0
+          for f in templates/*/app/{config,telegram,scheduler,state,gemini}.py; do
+            [ -e "$f" ] || continue
+            ref="templates/vertiguard/app/$(basename "$f")"
+            if ! cmp -s "$f" "$ref"; then
+              echo "::error file=$f::differs from $ref"
+              status=1
+            fi
+          done
+          exit $status
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -x templates/*/install.sh templates/vertiguard/probes/*.sh templates/vertiguard/probes/lib/*.sh
+
+  no-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No private keys, .env files or bot tokens
+        run: |
+          set -e
+          if grep -rEn "BEGIN (RSA|OPENSSH|EC) PRIVATE KEY" --exclude-dir=.git . ; then
+            echo "Found what looks like a private key." >&2; exit 1
+          fi
+          if git ls-files | grep -E '(^|/)[^/]*\.env$|(^|/)\.env' | grep -v '\.env\.example$'; then
+            echo ".env files must never be committed." >&2; exit 1
+          fi
+          if grep -rEn "[0-9]{8,10}:[A-Za-z0-9_-]{35}" --exclude-dir=.git . ; then
+            echo "Found what looks like a Telegram bot token." >&2; exit 1
+          fi
