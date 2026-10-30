@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2034  # the settings below are used by the probes that source this file
 # VertiGuard · shared by every probe: loads the probes config and helps print JSON.
 # Sourced by the probes, never run on its own. Installed in /opt/vertiguard/lib/, outside the sudo rule.
 

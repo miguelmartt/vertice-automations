@@ -50,7 +50,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck -x templates/*/install.sh templates/vertiguard/probes/*.sh templates/vertiguard/probes/lib/*.sh
+        # -P SCRIPTDIR: the probes source lib/common.sh relative to their own folder.
+        run: shellcheck -x -P SCRIPTDIR -S warning templates/*/install.sh templates/vertiguard/probes/*.sh templates/vertiguard/probes/lib/*.sh
 
   no-secrets:
     runs-on: ubuntu-latest

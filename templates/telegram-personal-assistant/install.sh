@@ -37,7 +37,7 @@ fi
 
 # Code: replaced as a whole, so files removed from the template do not linger.
 install -d -m 755 -o root -g root "$APP_DIR"
-rm -rf "$APP_DIR/app"
+rm -rf "${APP_DIR:?}/app"
 install -d -m 755 -o root -g root "$APP_DIR/app"
 install -m 644 -o root -g root "$SRC"/app/*.py "$APP_DIR/app/"
 echo "Installed the code in $APP_DIR/app"
