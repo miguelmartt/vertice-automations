@@ -1,0 +1,2 @@
+# Shell scripts, Python and systemd units run on Linux: keep LF everywhere, also on Windows checkouts.
+* text=auto eol=lf
