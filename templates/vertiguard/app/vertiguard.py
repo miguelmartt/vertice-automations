@@ -1,8 +1,8 @@
-"""VertiGuard: watches a VPS and reports on Telegram.
+"""VertiGuard: watches a VPS and reports on Telegram, through one bot.
 
 One process, up to three threads:
-  alerts       scheduled checks (services, disk/RAM, SSL, backups, fail2ban, updates)
-  bot          the DevOps bot with /menu and Gemini (only if DEVOPS_BOT_TOKEN is set)
+  alerts       scheduled checks that alert on changes, and the daily report
+  bot          commands, the button panel and questions to Gemini (unless COMMANDS=off)
   uptimerobot  the UptimeRobot webhook (only if WEBHOOK_PORT is set)
 
 systemd starts it as the vertiguard user: python3 vertiguard.py /etc/vertiguard/vertiguard.env
@@ -11,21 +11,26 @@ systemd starts it as the vertiguard user: python3 vertiguard.py /etc/vertiguard/
 import logging
 import os
 import signal
+import socket
 import sys
 import threading
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import config
 import messages
 import uptimerobot
 from alerts import Alerts
-from devops_bot import DevopsBot
+from bot import Bot
+from fmt import esc
 from gemini import Gemini
 from messages import t
+from panels import Context
 from probes import Probes
 from scheduler import Scheduler
+from snapshot import Snapshot
 from state import State
-from telegram import Telegram, md
+from telegram import Telegram
 
 log = logging.getLogger("vertiguard")
 DEFAULT_CONFIG = "/etc/vertiguard/vertiguard.env"
@@ -36,30 +41,42 @@ def build(cfg):
     messages.set_language(cfg.get_str("LANGUAGE", "en"))
     tz = ZoneInfo(cfg.get_str("TIMEZONE", "UTC"))
     chat_id = int(cfg.need("TELEGRAM_CHAT_ID"))
-    alerts_tg = Telegram(cfg.need("ALERTS_BOT_TOKEN"))
+    token = cfg.get_str("BOT_TOKEN") or cfg.get_str("ALERTS_BOT_TOKEN")  # ALERTS_BOT_TOKEN: the first release's name
+    if not token:
+        raise config.ConfigError("BOT_TOKEN is not set in the config file")
+    tg = Telegram(token)
     probes = Probes(cfg.get_str("PROBES_DIR", "/opt/vertiguard"))
+    snapshot = Snapshot(probes)
     state = State(os.path.join(cfg.get_str("STATE_DIR", "/var/lib/vertiguard"), "state.json"))
 
-    alerts = Alerts(alerts_tg, chat_id, state, probes,
-                    resource_pct=cfg.get_int("RESOURCE_ALERT_PCT", 80), ssl_days=cfg.get_int("SSL_ALERT_DAYS", 15))
+    server = cfg.get_str("SERVER_NAME") or socket.gethostname().split(".")[0]
+    resource_pct = cfg.get_int("RESOURCE_ALERT_PCT", 80)
+    ssl_days = cfg.get_int("SSL_ALERT_DAYS", 15)
+    backup_hour = cfg.get_int("BACKUP_CHECK_HOUR", 6)
+    report = cfg.get_str("REPORT_HOUR", "9")
+    report_hour = None if report.lower() == "off" else int(report)
+    commands = cfg.get_str("COMMANDS", "on").lower() != "off"
+
+    def context():
+        return Context(server, datetime.now(tz), resource_pct, ssl_days, backup_hour)
+
+    alerts = Alerts(tg, chat_id, state, snapshot, context, resource_pct, ssl_days, buttons=commands)
     scheduler = Scheduler(
         tz,
-        on_failure=lambda job, e: alerts_tg.send(
-            chat_id, t("job_failed", job=t("job_" + job), error=md(str(e)[:300])), markdown=True),
-        on_recovery=lambda job: alerts_tg.send(chat_id, t("job_recovered", job=t("job_" + job)), markdown=True),
+        on_failure=lambda job, e: tg.send(chat_id, t("job_failed", job=t("job_" + job), error=esc(str(e)[:300])), html=True),
+        on_recovery=lambda job: tg.send(chat_id, t("job_recovered", job=t("job_" + job)), html=True),
     )
-    for name, when, job in alerts.jobs(cfg.get_int("REPORT_HOUR", 9), cfg.get_int("BACKUP_CHECK_HOUR", 6)):
+    for name, when, job in alerts.jobs(report_hour, backup_hour):
         scheduler.add(name, when, job)
 
     parts = {"alerts": (scheduler.loop, True)}
-    if cfg.get_str("DEVOPS_BOT_TOKEN"):
+    if commands:
         gemini = Gemini(cfg.get_str("GEMINI_API_KEY"), cfg.get_str("GEMINI_MODEL", "gemini-flash-latest")) \
             if cfg.get_str("GEMINI_API_KEY") else None
-        bot = DevopsBot(Telegram(cfg.get_str("DEVOPS_BOT_TOKEN")), chat_id, probes, gemini)
-        parts["bot"] = (bot.loop, True)
+        parts["bot"] = (Bot(tg, chat_id, snapshot, probes, context, gemini, report_hour).loop, True)
     webhook = None
     if cfg.get_str("WEBHOOK_PORT"):
-        webhook = uptimerobot.server(alerts_tg, chat_id, cfg.get_int("WEBHOOK_PORT", 0),
+        webhook = uptimerobot.server(tg, chat_id, cfg.get_int("WEBHOOK_PORT", 0),
                                      cfg.get_str("WEBHOOK_PATH", "/webhook/uptimerobot"))
         parts["uptimerobot"] = (webhook.serve_forever, False)
     return parts, webhook

@@ -9,8 +9,8 @@ import logging
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from fmt import esc
 from messages import t
-from telegram import md
 
 log = logging.getLogger("uptimerobot")
 MAX_BODY = 65536
@@ -34,7 +34,7 @@ def server(telegram, chat_id, port, path):
             if isinstance(body, dict):
                 data.update(body)
             try:
-                telegram.send(chat_id, alert(data), markdown=True)
+                telegram.send(chat_id, alert(data), html=True)
             except Exception:
                 log.exception("Could not forward the UptimeRobot alert")
                 return self.reply(502)
@@ -61,11 +61,11 @@ def alert(b):
     down = kind == "1" or "down" in kind
     lines = [
         t("external_down" if down else "external_up"),
-        t("external_monitor", value=md(b.get("monitor") or b.get("monitorFriendlyName") or "?")),
-        t("external_url", value=md(b.get("url") or b.get("monitorURL") or "?")),
-        t("external_details", value=md(b.get("details") or b.get("alertDetails") or "—")),
+        "• " + t("external_monitor", value=esc(b.get("monitor") or b.get("monitorFriendlyName") or "?")),
+        "• " + t("external_url", value=esc(b.get("url") or b.get("monitorURL") or "?")),
+        "• " + t("external_details", value=esc(b.get("details") or b.get("alertDetails") or "—")),
     ]
     when = b.get("datetime") or b.get("alertDateTime")
     if when:
-        lines.append("🕒 " + md(when))
+        lines += ["", f"<i>🕒 {esc(when)}</i>"]
     return "\n".join(lines)

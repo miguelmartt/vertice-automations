@@ -109,6 +109,25 @@ class TelegramTest(unittest.TestCase):
         self.assertEqual(len(sent), 2)
         self.assertNotIn("parse_mode", sent[1])
 
+    def test_html_falls_back_to_plain_text_without_tags(self):
+        sent = []
+
+        def urlopen(req, timeout):
+            body = json.loads(req.data)
+            sent.append(body)
+            if "parse_mode" in body:
+                raise http_error(400, '{"description":"Bad Request: can\'t parse entities"}')
+            return FakeResponse(b'{"ok":true,"result":{}}')
+
+        with mock.patch("urllib.request.urlopen", urlopen), self.assertLogs("telegram", level="WARNING"):
+            telegram.Telegram("SECRET").send(1, "<b>a &amp; b</b>", html=True)
+        self.assertEqual(sent[0]["parse_mode"], "HTML")
+        self.assertEqual(sent[1]["text"], "a & b")
+
+    def test_editing_to_the_same_text_is_not_an_error(self):
+        with mock.patch("urllib.request.urlopen", side_effect=http_error(400, "Bad Request: message is not modified")):
+            self.assertIsNone(telegram.Telegram("SECRET").edit(1, 2, "same", html=True))
+
     def test_errors_do_not_leak_the_token(self):
         with mock.patch("urllib.request.urlopen", side_effect=http_error(401, "Unauthorized")):
             with self.assertRaises(telegram.TelegramError) as ctx:

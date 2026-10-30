@@ -14,9 +14,9 @@ class AlertTextTest(unittest.TestCase):
         messages.set_language("en")
 
     def test_down(self):
-        text = uptimerobot.alert({"alertType": "1", "monitorFriendlyName": "my_site", "monitorURL": "https://example.com"})
+        text = uptimerobot.alert({"alertType": "1", "monitorFriendlyName": "<my_site>", "monitorURL": "https://example.com"})
         self.assertIn("DOWN", text)
-        self.assertIn("my\\_site", text)
+        self.assertIn("Monitor: <b>&lt;my_site&gt;</b>", text)
 
     def test_up(self):
         self.assertIn("UP again", uptimerobot.alert({"alertTypeFriendlyName": "Up"}))

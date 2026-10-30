@@ -3,8 +3,10 @@
 Shared module: every template ships an identical copy, so each one stays self-contained.
 """
 
+import html
 import json
 import logging
+import re
 import urllib.error
 import urllib.request
 
@@ -38,17 +40,32 @@ class Telegram:
         except OSError as e:
             raise TelegramError(f"{method}: {getattr(e, 'reason', e)}") from None
 
-    def send(self, chat_id, text, markdown=False, **extra):
-        """Sends a message. If Telegram rejects the Markdown, it is sent again as plain text."""
+    def send(self, chat_id, text, markdown=False, html=False, **extra):
+        """Sends a message. If Telegram rejects the Markdown or HTML, it is sent again as plain text."""
         params = {"chat_id": chat_id, "text": text[:MAX_TEXT], **extra}
-        if markdown:
+        mode = "HTML" if html else "Markdown" if markdown else None
+        if mode:
             try:
-                return self.call("sendMessage", {**params, "parse_mode": "Markdown"})
+                return self.call("sendMessage", {**params, "parse_mode": mode})
             except TelegramError as e:
                 if "can't parse entities" not in str(e):
                     raise
-                log.warning("Telegram rejected the Markdown; sending as plain text")
+                log.warning("Telegram rejected the %s; sending as plain text", mode)
+                if html:
+                    params["text"] = plain(text)[:MAX_TEXT]
         return self.call("sendMessage", params)
+
+    def edit(self, chat_id, message_id, text, html=False, **extra):
+        """Replaces the text (and buttons) of a message. Editing it to the same content is not an error."""
+        params = {"chat_id": chat_id, "message_id": message_id, "text": text[:MAX_TEXT], **extra}
+        if html:
+            params["parse_mode"] = "HTML"
+        try:
+            return self.call("editMessageText", params)
+        except TelegramError as e:
+            if "message is not modified" in str(e):
+                return None
+            raise
 
     def send_long(self, chat_id, text, **extra):
         """Plain text of any length, split into several messages if needed."""
@@ -74,3 +91,8 @@ def md(value):
     for c in "_*`[":
         text = text.replace(c, "\\" + c)
     return text
+
+
+def plain(text):
+    """HTML message → plain text, for when Telegram rejects the markup."""
+    return html.unescape(re.sub(r"<[^>]+>", "", text))
