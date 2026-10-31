@@ -9,10 +9,27 @@ Group=form-to-telegram
 ExecStart=/usr/bin/python3 -s /opt/form-to-telegram/app/form_to_telegram.py /etc/form-to-telegram/form-to-telegram.env
 Restart=always
 RestartSec=10
+UMask=0077
+# A heavy email can't take the server down with it.
+MemoryMax=256M
+CPUQuota=50%
+# It only reads its config and talks to the IMAP server and Telegram: everything else is closed.
 NoNewPrivileges=true
+CapabilityBoundingSet=
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target

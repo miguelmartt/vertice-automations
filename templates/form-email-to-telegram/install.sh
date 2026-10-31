@@ -28,19 +28,32 @@ install -m 644 -o root -g root "$HERE"/app/*.py "$OPT/app/"
 echo "== Settings in $ETC (an existing file is kept)"
 install -d -m 750 -o root -g "$NAME" "$ETC"
 [ -e "$ETC/$NAME.env" ] || install -m 640 -o root -g "$NAME" "$HERE/$NAME.env.example" "$ETC/$NAME.env"
+# Also on a file that was already there: it holds the mailbox password, so only root and the service read it.
+chown root:"$NAME" "$ETC/$NAME.env"
+chmod 640 "$ETC/$NAME.env"
 
 echo "== systemd unit"
 install -m 644 -o root -g root "$HERE/systemd/$NAME.service" "/etc/systemd/system/$NAME.service"
 systemctl daemon-reload
 
-if systemctl is-active --quiet "$NAME"; then
+if systemctl is-active --quiet "$NAME" && ! grep -qE '^FORM_FROM=[^[:space:]]' "$ETC/$NAME.env"; then
+  # Settings from before FORM_FROM existed: the new code would not start, so the old one keeps running.
+  cat <<EOF
+
+$NAME is running the old code and was NOT restarted: the new one needs FORM_FROM.
+  1) Set FORM_FROM in $ETC/$NAME.env (the address your website sends the form emails from, or any)
+     and check DKIM_DOMAIN (see the README).
+  2) Then:  systemctl restart $NAME
+EOF
+elif systemctl is-active --quiet "$NAME"; then
   systemctl restart "$NAME"
   echo "$NAME was running: restarted with the new code."
 else
   cat <<EOF
 
 Installed. Next:
-  1) Put the mailbox, the bot token and your chat ID in $ETC/$NAME.env.
+  1) Put the mailbox, the address your website sends from (FORM_FROM), the bot token and your
+     chat ID in $ETC/$NAME.env.
   2) Start it:  systemctl enable --now $NAME
      Watch it:  journalctl -u $NAME -f
 EOF
