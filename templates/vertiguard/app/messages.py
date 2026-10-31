@@ -184,6 +184,7 @@ TEXTS = {
         "external_monitor": "Monitor: <b>{value}</b>",
         "external_url": "URL: {value}",
         "external_details": "Details: {value}",
+        "external_flood": "⚠️ <b>UptimeRobot</b>: {n} more alerts in a minute were not forwarded (limit: {limit} a minute). See UptimeRobot for the details.",
     },
     "es": {
         "weekdays": "lunes,martes,miércoles,jueves,viernes,sábado,domingo",
@@ -350,6 +351,7 @@ TEXTS = {
         "external_monitor": "Monitor: <b>{value}</b>",
         "external_url": "URL: {value}",
         "external_details": "Detalle: {value}",
+        "external_flood": "⚠️ <b>UptimeRobot</b>: {n} avisos más en un minuto no se han reenviado (límite: {limit} por minuto). Mira el detalle en UptimeRobot.",
     },
 }
 

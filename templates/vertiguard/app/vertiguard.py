@@ -3,7 +3,7 @@
 One process, up to three threads:
   alerts       scheduled checks that alert on changes, and the daily report
   bot          commands, the button panel and questions to Gemini (unless COMMANDS=off)
-  uptimerobot  the UptimeRobot webhook (only if WEBHOOK_PORT is set)
+  uptimerobot  the UptimeRobot webhook (only if WEBHOOK_PORT and WEBHOOK_TOKEN are set)
 
 systemd starts it as the vertiguard user: python3 vertiguard.py /etc/vertiguard/vertiguard.env
 """
@@ -76,9 +76,15 @@ def build(cfg):
         parts["bot"] = (Bot(tg, chat_id, snapshot, probes, context, gemini, report_hour).loop, True)
     webhook = None
     if cfg.get_str("WEBHOOK_PORT"):
-        webhook = uptimerobot.server(tg, chat_id, cfg.get_int("WEBHOOK_PORT", 0),
-                                     cfg.get_str("WEBHOOK_PATH", "/webhook/uptimerobot"))
-        parts["uptimerobot"] = (webhook.serve_forever, False)
+        token = cfg.get_str("WEBHOOK_TOKEN")
+        if len(token) < uptimerobot.MIN_TOKEN:
+            # Without a secret, anyone who finds the URL could send messages to your chat.
+            log.error("The UptimeRobot webhook stays off: WEBHOOK_TOKEN is empty or shorter than %d characters "
+                      "(make one with: openssl rand -hex 32)", uptimerobot.MIN_TOKEN)
+        else:
+            webhook = uptimerobot.server(tg, chat_id, cfg.get_int("WEBHOOK_PORT", 0),
+                                         cfg.get_str("WEBHOOK_PATH", "/webhook/uptimerobot"), token)
+            parts["uptimerobot"] = (webhook.serve_forever, False)
     return parts, webhook
 
 

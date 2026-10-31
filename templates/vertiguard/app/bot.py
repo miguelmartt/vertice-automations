@@ -4,7 +4,8 @@ Commands go in the configured language (/parte, /servicios… or /report, /servi
 English names always work too. Telegram shows them in its «/» menu. Buttons edit the message they
 belong to, so browsing the panel does not flood the chat. Restarts ask first, and only the units in
 probes.conf's RESTARTABLE can be restarted (the root probe checks it, not the bot). Gemini can read
-a snapshot of the server but cannot change anything. Only the configured chat gets an answer.
+a snapshot of the server but cannot change anything. Only the configured user gets an answer, and
+only in their private chat with the bot (TELEGRAM_CHAT_ID is their user ID).
 """
 
 import ipaddress
@@ -97,8 +98,11 @@ class Bot:
 
     def handle(self, update):
         cq, msg = update.get("callback_query"), update.get("message")
-        chat = ((cq or {}).get("message") or msg or {}).get("chat", {}).get("id")
-        if chat != self.chat_id:
+        chat = ((cq or {}).get("message") or msg or {}).get("chat") or {}
+        sender = ((cq or msg or {}).get("from") or {}).get("id")
+        # Only you, in your private chat with the bot: not a group, even one you are in, and not
+        # someone else pressing a button there.
+        if chat.get("id") != self.chat_id or chat.get("type") != "private" or sender != self.chat_id:
             return
         try:
             if cq:

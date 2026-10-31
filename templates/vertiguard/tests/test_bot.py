@@ -9,13 +9,15 @@ from tests.fakes import FakeProbes, FakeTelegram, context, sample
 CHAT = 42
 
 
-def message(text, chat=CHAT):
-    return {"update_id": 1, "message": {"chat": {"id": chat}, "text": text}}
+def message(text, chat=CHAT, sender=None, kind="private"):
+    return {"update_id": 1, "message": {"chat": {"id": chat, "type": kind}, "from": {"id": sender or chat},
+                                        "text": text}}
 
 
-def button(data, chat=CHAT, message_id=7):
-    return {"update_id": 1, "callback_query": {"id": "cq", "data": data,
-                                               "message": {"chat": {"id": chat}, "message_id": message_id}}}
+def button(data, chat=CHAT, message_id=7, sender=None, kind="private"):
+    return {"update_id": 1, "callback_query": {"id": "cq", "data": data, "from": {"id": sender or chat},
+                                               "message": {"chat": {"id": chat, "type": kind},
+                                                           "message_id": message_id}}}
 
 
 def buttons(markup):
@@ -54,6 +56,22 @@ class BotTest(unittest.TestCase):
         self.bot.handle(button("v:report", chat=7))
         self.assertEqual(self.tg.sent + self.tg.edits, [])
         self.assertEqual(self.probes.ran, [])
+
+    def test_only_you_in_your_private_chat(self):
+        # You in a group (another member could press the buttons there), someone else in a chat with your
+        # ID, a channel post, a button with no sender: all ignored, restarts included.
+        self.bot.handle(message("/menu", chat=-100123, sender=CHAT, kind="supergroup"))
+        self.bot.handle(button("ok:restart:nginx", chat=-100123, sender=CHAT, kind="group"))
+        self.bot.handle(message("/menu", sender=7))
+        self.bot.handle(button("ok:restart:nginx", sender=7))
+        self.bot.handle(message("/menu", kind="group"))
+        self.bot.handle({"update_id": 1, "message": {"chat": {"id": CHAT, "type": "private"}, "text": "/menu"}})
+        self.bot.handle({"update_id": 1, "callback_query": {"id": "cq", "data": "m", "inline_message_id": "x",
+                                                            "from": {"id": CHAT}}})
+        self.assertEqual(self.tg.sent + self.tg.edits + self.tg.calls, [])
+        self.assertEqual(self.probes.ran, [])
+        self.bot.handle(message("/menu"))
+        self.assertEqual(len(self.tg.sent), 1)
 
     def test_setup_registers_spanish_commands(self):
         self.bot.setup()

@@ -3,6 +3,7 @@ import unittest
 
 import config
 import messages
+import telegram
 import vertiguard
 
 
@@ -31,12 +32,25 @@ class BuildTest(unittest.TestCase):
         self.assertIn("alerts", vertiguard.build(c)[0])
 
     def test_bot_and_webhook_when_configured(self):
-        parts, webhook = vertiguard.build(cfg(WEBHOOK_PORT="0", LANGUAGE="es"))
+        parts, webhook = vertiguard.build(cfg(WEBHOOK_PORT="0", WEBHOOK_TOKEN="a" * 32, LANGUAGE="es"))
         try:
             self.assertEqual(list(parts), ["alerts", "bot", "uptimerobot"])
             self.assertEqual(messages.t("btn_cancel"), "✖️ Cancelar")
         finally:
             webhook.server_close()
+
+    def test_webhook_stays_off_without_a_token(self):
+        for token in ("", "too-short"):
+            with self.assertLogs("vertiguard", level="ERROR") as logs:
+                parts, webhook = vertiguard.build(cfg(WEBHOOK_PORT="0", WEBHOOK_TOKEN=token))
+            self.assertIsNone(webhook)
+            self.assertNotIn("uptimerobot", parts)
+            self.assertIn("WEBHOOK_TOKEN", logs.output[0])
+
+    def test_malformed_bot_token(self):
+        with self.assertRaises(telegram.TelegramError) as ctx:
+            vertiguard.build(cfg(BOT_TOKEN="123:abc def"))
+        self.assertNotIn("abc", str(ctx.exception))
 
     def test_missing_chat_id_or_token(self):
         c = cfg()
