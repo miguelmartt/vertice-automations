@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # VertiGuard · unban an IP from the fail2ban jail -> one-line JSON. Validates the IP first.
 set -uo pipefail
 # shellcheck source=lib/common.sh

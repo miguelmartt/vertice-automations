@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # VertiGuard · fail2ban jail summary, plus the bans of the last 24 h -> one-line JSON
 set -uo pipefail
 # shellcheck source=lib/common.sh

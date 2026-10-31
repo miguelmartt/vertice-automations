@@ -10,6 +10,21 @@ ExecStart=/usr/bin/python3 -s /opt/vertiguard/app/vertiguard.py /etc/vertiguard/
 Restart=always
 RestartSec=10
 StateDirectory=vertiguard
+StateDirectoryMode=0700
+UMask=0077
+PrivateTmp=yes
+ProtectSystem=full
+MemoryMax=512M
+TasksMax=128
+# Only the hardening that keeps sudo working. The probes reach root through sudo, a setuid program,
+# so NoNewPrivileges= is out, and so is everything systemd turns it on with for a non-root User=:
+# SystemCallFilter=, SystemCallArchitectures=, RestrictAddressFamilies=, PrivateDevices=,
+# ProtectKernelTunables/Modules/Logs=, ProtectClock=, ProtectHostname=, RestrictNamespaces=,
+# RestrictRealtime=, RestrictSUIDSGID=, LockPersonality=, MemoryDenyWriteExecute=. An empty
+# CapabilityBoundingSet= would stop sudo from switching to root as well.
+# The probes run inside this sandbox too, so: ProtectSystem=full (not strict) leaves /var writable for
+# dnf's cache, there is no ProtectHome= because rclone keeps its config and refreshed tokens in /root,
+# and MemoryMax= and TasksMax= count the probes as well (dnf check-update is the hungriest).
 
 [Install]
 WantedBy=multi-user.target

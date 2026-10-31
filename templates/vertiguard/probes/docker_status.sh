@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # VertiGuard · Docker containers and what they use -> one-line JSON
 set -uo pipefail
 # shellcheck source=lib/common.sh

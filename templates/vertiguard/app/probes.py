@@ -1,7 +1,7 @@
 """Runs the root probes in /opt/vertiguard through sudo. Each one prints a single line of JSON.
 
-The sudoers rule installed by install.sh lets the vertiguard user run /opt/vertiguard/*.sh as root,
-and nothing else.
+The sudoers rule installed by install.sh lets the vertiguard user run each probe in /opt/vertiguard
+as root (the read-only ones without arguments), and nothing else.
 """
 
 import json
@@ -20,9 +20,10 @@ class Probes:
 
     def run(self, name, *args, timeout=180):
         try:
+            # errors="replace": a process or mount name that is not valid UTF-8 must not break the probe.
             r = subprocess.run(
                 ["sudo", "-n", f"{self.directory}/{name}", *args],
-                capture_output=True, text=True, timeout=timeout,
+                capture_output=True, text=True, errors="replace", timeout=timeout,
             )
         except subprocess.TimeoutExpired:
             raise ProbeError(f"{name} took more than {timeout} s") from None

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # VertiGuard · pending system updates (dnf or apt): how many, how many are security fixes, which, and
 # whether a reboot is needed to apply what is already installed (a new kernel, for example) -> one-line JSON
 set -uo pipefail

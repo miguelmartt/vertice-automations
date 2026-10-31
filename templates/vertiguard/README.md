@@ -53,7 +53,8 @@ It comes with 🔄 *Refresh* and 📋 *Menu* buttons.
 | `/help` | all of the above |
 
 Any other message goes to **Gemini** (optional), which can read a live snapshot of the server but cannot
-change anything. The bot only answers your chat. **UptimeRobot** alerts can come through it too.
+change anything. The bot only answers you, in your private chat with it (never in a group). **UptimeRobot**
+alerts can come through it too.
 
 Every message is available in English and Spanish (`LANGUAGE=en|es`).
 
@@ -70,15 +71,22 @@ Every message is available in English and Spanish (`LANGUAGE=en|es`).
 
 - The **probes** (`/opt/vertiguard/*.sh`) read the server and print one line of JSON: services,
   system, certificates, fail2ban, SSH logins, backups, Docker and updates. They run as root through one
-  sudoers rule: `vertiguard ALL=(root) NOPASSWD: /opt/vertiguard/*.sh`. The service user can run those
-  scripts and nothing else. Several run in parallel, so a command answers in a second or two; the
-  updates check is slow, so it is cached for 6 hours (*Refresh* forces it).
+  sudoers rule, `/etc/sudoers.d/vertiguard`, that names each probe: the read-only ones can only be run
+  without arguments, `restart_service.sh` and `unban_ip.sh` with the one they check. sudo starts them
+  with a clean environment and a fixed `PATH`. The service user can run those scripts and nothing else.
+  Several run in parallel, so a command answers in a second or two; the updates check is slow, so it
+  is cached for 6 hours (*Refresh* forces it).
+- The probes treat what they read as untrusted: numbers from `df`, `ps` and the like are checked before
+  any arithmetic, control characters never reach the JSON, the lists in `probes.conf` are never expanded
+  as file names, and SSH logins only come from what the SSH service itself logged.
 - What the probes look at is set in `/etc/vertiguard/probes.conf`. It is sourced as root, so the
   probes refuse to run if it (or its folder) is not owned by root or is writable by others.
 - Only two actions change anything: `restart_service.sh` (only units listed in `RESTARTABLE`) and
   `unban_ip.sh` (validates the IP). The bot always asks before a restart.
 - The bot uses **long polling**: no webhook and no open port for Telegram. The UptimeRobot webhook
-  listens on `127.0.0.1` only.
+  listens on `127.0.0.1` only and only takes requests that carry `WEBHOOK_TOKEN`.
+- The systemd unit adds the hardening that still lets sudo work (`PrivateTmp`, `ProtectSystem=full`,
+  `UMask=0077`, memory and task limits); its comments say what is left out and why.
 - What was last reported is kept in `/var/lib/vertiguard/state.json`, so a restart doesn't repeat
   alerts. Logs go to the journal: `journalctl -u vertiguard`.
 
@@ -122,12 +130,12 @@ them). It does not start anything yet.
 
    | Setting | Meaning |
    |---|---|
-   | `TELEGRAM_CHAT_ID` | your chat ID; everything goes there and the bot only answers it |
+   | `TELEGRAM_CHAT_ID` | your Telegram user ID; everything goes there and the bot only answers you, in your private chat with it |
    | `BOT_TOKEN` | the bot: alerts, report, commands and buttons |
    | `COMMANDS` | `off` = the bot only sends alerts and the report |
    | `SERVER_NAME` | name shown in the messages (default: the hostname) |
    | `GEMINI_API_KEY`, `GEMINI_MODEL` | empty key = commands and buttons only |
-   | `WEBHOOK_PORT`, `WEBHOOK_PATH` | UptimeRobot webhook on `127.0.0.1`; empty port = off |
+   | `WEBHOOK_PORT`, `WEBHOOK_PATH`, `WEBHOOK_TOKEN` | UptimeRobot webhook on `127.0.0.1`; empty port = off, and it stays off without a token of 16+ characters |
    | `LANGUAGE`, `TIMEZONE` | `en`/`es`; time zone for the report and the times shown |
    | `REPORT_HOUR` | hour of the daily report (0-23), or `off` |
    | `BACKUP_CHECK_HOUR`, `RESOURCE_ALERT_PCT`, `SSL_ALERT_DAYS` | backup check hour and thresholds |
@@ -145,16 +153,43 @@ them). It does not start anything yet.
 
 ### UptimeRobot (optional)
 
-1. Set `WEBHOOK_PORT` (e.g. `5678`) and a hard-to-guess `WEBHOOK_PATH` in `vertiguard.env`.
-2. Put a reverse proxy in front, for example in nginx:
+The simplest and safest option is not to expose anything: add an alert contact of type **Telegram** in
+UptimeRobot itself and leave `WEBHOOK_PORT` empty. If you want its alerts to come through VertiGuard:
+
+1. In `vertiguard.env`, set `WEBHOOK_PORT` (e.g. `5678`), a hard-to-guess `WEBHOOK_PATH` and a
+   `WEBHOOK_TOKEN` (make one with `openssl rand -hex 32`). Without the token the webhook does not start,
+   and the log says so.
+2. Put a reverse proxy in front that lets through only `POST` to that exact path. In nginx, ideally in a
+   server block of its own (a subdomain just for this):
 
    ```nginx
-   location /webhook/ { proxy_pass http://127.0.0.1:5678; }
+   server {
+       server_name hooks.example.com;
+       # listen 443 ssl; plus your certificate, as in your other server blocks
+       location = /webhook/uptimerobot {
+           limit_except POST { deny all; }
+           client_max_body_size 64k;
+           proxy_pass http://127.0.0.1:5678;
+       }
+       location / { return 404; }
+   }
    ```
 
-3. In UptimeRobot, add an alert contact of type **Webhook**, POST, JSON body, URL
-   `https://your-domain/<WEBHOOK_PATH>`, with the variables `*monitorFriendlyName*`, `*monitorURL*`,
-   `*alertType*`, `*alertDetails*` and `*alertDateTime*`.
+   In the server block of an existing site, add only the `location = …` block.
+3. In UptimeRobot, add an alert contact of type **Webhook**, URL `https://hooks.example.com/<WEBHOOK_PATH>`,
+   *Send as JSON*, with this POST value (your token in place of `YOUR_WEBHOOK_TOKEN`):
+
+   ```json
+   {"token": "YOUR_WEBHOOK_TOKEN", "monitorFriendlyName": "*monitorFriendlyName*", "monitorURL": "*monitorURL*",
+    "alertType": "*alertType*", "alertDetails": "*alertDetails*", "alertDateTime": "*alertDateTime*"}
+   ```
+
+   The token also works as `?token=` in the URL or in an `X-Webhook-Token` header, but in the body it
+   stays out of the web server's access log.
+
+A request without the right token gets a 404, like any other path or a `GET`, and nothing is sent.
+Bodies over 64 KiB are refused, and at most 20 alerts a minute reach Telegram: the rest are counted
+and summed up in one message when that minute is over.
 
 ---
 
@@ -166,6 +201,11 @@ cd vertice-automations && git pull && sudo bash templates/vertiguard/install.sh 
 
 From the first Python release (two bots): `ALERTS_BOT_TOKEN` is still read as `BOT_TOKEN`, and
 `DEVOPS_BOT_TOKEN` is no longer used: commands now live in the same bot as the alerts.
+
+From a release before the 2026-10-31 hardening: the installer rewrites the sudoers rule and the unit,
+and restarts the service. If you use the UptimeRobot webhook, add `WEBHOOK_TOKEN` and the token to the
+POST value in UptimeRobot (see above), or the webhook stays off. Commands only work in your private
+chat with the bot now, not in groups.
 
 To remove it: `systemctl disable --now vertiguard`, then delete `/etc/systemd/system/vertiguard.service`,
 `/etc/sudoers.d/vertiguard`, `/opt/vertiguard`, `/etc/vertiguard`, `/var/lib/vertiguard` and the user.

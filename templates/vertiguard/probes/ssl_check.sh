@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # VertiGuard · days left on each Let's Encrypt certificate -> one-line JSON
 set -uo pipefail
 # shellcheck source=lib/common.sh
@@ -12,7 +12,8 @@ for d in "$LE_LIVE"/*/; do
   cert="${d}fullchain.pem"
   [ -f "$cert" ] || continue
   end=$(openssl x509 -enddate -noout -in "$cert" 2>/dev/null | cut -d= -f2)
-  end_s=$(date -d "$end" +%s 2>/dev/null || echo 0)
-  items="$items{\"name\":$(json_str "$name"),\"days\":$(( (end_s - now_s) / 86400 ))},"
+  end_s=$(date -d "$end" +%s 2>/dev/null)
+  is_uint "$end_s" || end_s=0
+  items="$items{\"name\":$(json_str "$name"),\"days\":$(( (10#$end_s - now_s) / 86400 ))},"
 done
 printf '{"ts":"%s","certs":[%s]}\n' "$(now)" "${items%,}"
