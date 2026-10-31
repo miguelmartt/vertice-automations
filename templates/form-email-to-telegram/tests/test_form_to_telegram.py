@@ -155,7 +155,7 @@ class WatcherTest(unittest.TestCase):
         self.assertIn("again", tg.texts[1])
 
     def test_build_from_config(self):
-        cfg = config.Config({"TELEGRAM_CHAT_ID": "42", "BOT_TOKEN": "x", "IMAP_HOST": "imap.example.com",
+        cfg = config.Config({"TELEGRAM_CHAT_ID": "42", "BOT_TOKEN": "123:TEST", "IMAP_HOST": "imap.example.com",
                              "IMAP_USER": "u", "IMAP_PASSWORD": "p", "FIELDS": "Name, Email", "LANGUAGE": "es"})
         watcher = form_to_telegram.build(cfg)
         self.assertEqual(watcher.inbox.fields, ["Name", "Email"])

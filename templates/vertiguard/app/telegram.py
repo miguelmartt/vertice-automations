@@ -7,23 +7,43 @@ import html
 import json
 import logging
 import re
+import time
 import urllib.error
 import urllib.request
 
 log = logging.getLogger("telegram")
 
 MAX_TEXT = 4096
+MAX_WAIT = 60  # longest "retry after" (HTTP 429) that is waited out; a longer one is an error
+TOKEN = re.compile(r"[0-9]+:[A-Za-z0-9_-]+")  # what @BotFather hands out: 123456789:AAE…
+RETRY_AFTER = re.compile(r'"retry_after"\s*:\s*([0-9]{1,6})')
 
 
 class TelegramError(Exception):
-    pass
+    def __init__(self, message, retry_after=None):
+        super().__init__(message)
+        self.retry_after = retry_after  # seconds Telegram asked to wait, if it said "Too Many Requests"
 
 
 class Telegram:
     def __init__(self, token):
+        # Checked up front: anything else (a space, a newline, a slash…) would end up inside the URL.
+        if not TOKEN.fullmatch(token or ""):
+            raise TelegramError("The bot token does not look like one from @BotFather (123456789:AAE…)")
         self._url = f"https://api.telegram.org/bot{token}/"
 
     def call(self, method, params=None, timeout=30):
+        """Calls a Bot API method. If Telegram says to slow down (HTTP 429), waits as asked and tries once more."""
+        try:
+            return self._call(method, params, timeout)
+        except TelegramError as e:
+            if e.retry_after is None or e.retry_after > MAX_WAIT:
+                raise
+            log.warning("Telegram asked to wait %d s before %s", e.retry_after, method)
+            time.sleep(e.retry_after)
+        return self._call(method, params, timeout)
+
+    def _call(self, method, params, timeout):
         req = urllib.request.Request(
             self._url + method,
             data=json.dumps(params or {}).encode(),
@@ -36,9 +56,13 @@ class Telegram:
         except urllib.error.HTTPError as e:
             detail = e.read().decode(errors="replace")[:300]
             e.close()
-            raise TelegramError(f"{method}: HTTP {e.code} {detail}") from None
+            wait = RETRY_AFTER.search(detail) if e.code == 429 else None
+            raise TelegramError(f"{method}: HTTP {e.code} {detail}", int(wait.group(1)) if wait else None) from None
         except OSError as e:
             raise TelegramError(f"{method}: {getattr(e, 'reason', e)}") from None
+        except (ValueError, KeyError) as e:
+            # A bad answer, or http.client.InvalidURL: a ValueError whose message holds the URL, so only the type.
+            raise TelegramError(f"{method}: {type(e).__name__}") from None
 
     def send(self, chat_id, text, markdown=False, html=False, **extra):
         """Sends a message. If Telegram rejects the Markdown or HTML, it is sent again as plain text."""
@@ -94,5 +118,8 @@ def md(value):
 
 
 def plain(text):
-    """HTML message → plain text, for when Telegram rejects the markup."""
-    return html.unescape(re.sub(r"<[^>]+>", "", text))
+    """HTML message → plain text, for when Telegram rejects the markup.
+
+    [^<>] stops at the next "<", so a text full of unclosed "<" takes linear time, not quadratic.
+    """
+    return html.unescape(re.sub(r"<[^<>]*>", "", text))

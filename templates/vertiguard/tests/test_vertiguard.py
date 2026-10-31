@@ -7,7 +7,7 @@ import vertiguard
 
 
 def cfg(**values):
-    c = config.Config({"TELEGRAM_CHAT_ID": "42", "BOT_TOKEN": "x", "STATE_DIR": tempfile.mkdtemp()})
+    c = config.Config({"TELEGRAM_CHAT_ID": "42", "BOT_TOKEN": "123:TEST", "STATE_DIR": tempfile.mkdtemp()})
     c.update(values)
     return c
 

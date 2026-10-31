@@ -5,6 +5,7 @@ import json
 import os
 import string
 import tempfile
+import time
 import unittest
 import urllib.error
 from datetime import datetime
@@ -105,7 +106,7 @@ class TelegramTest(unittest.TestCase):
             return FakeResponse(b'{"ok":true,"result":{}}')
 
         with mock.patch("urllib.request.urlopen", urlopen), self.assertLogs("telegram", level="WARNING"):
-            telegram.Telegram("SECRET").send(1, "a_b", markdown=True)
+            telegram.Telegram("123:SECRET").send(1, "a_b", markdown=True)
         self.assertEqual(len(sent), 2)
         self.assertNotIn("parse_mode", sent[1])
 
@@ -120,18 +121,18 @@ class TelegramTest(unittest.TestCase):
             return FakeResponse(b'{"ok":true,"result":{}}')
 
         with mock.patch("urllib.request.urlopen", urlopen), self.assertLogs("telegram", level="WARNING"):
-            telegram.Telegram("SECRET").send(1, "<b>a &amp; b</b>", html=True)
+            telegram.Telegram("123:SECRET").send(1, "<b>a &amp; b</b>", html=True)
         self.assertEqual(sent[0]["parse_mode"], "HTML")
         self.assertEqual(sent[1]["text"], "a & b")
 
     def test_editing_to_the_same_text_is_not_an_error(self):
         with mock.patch("urllib.request.urlopen", side_effect=http_error(400, "Bad Request: message is not modified")):
-            self.assertIsNone(telegram.Telegram("SECRET").edit(1, 2, "same", html=True))
+            self.assertIsNone(telegram.Telegram("123:SECRET").edit(1, 2, "same", html=True))
 
     def test_errors_do_not_leak_the_token(self):
         with mock.patch("urllib.request.urlopen", side_effect=http_error(401, "Unauthorized")):
             with self.assertRaises(telegram.TelegramError) as ctx:
-                telegram.Telegram("SECRET").call("getMe")
+                telegram.Telegram("123:SECRET").call("getMe")
         self.assertNotIn("SECRET", str(ctx.exception))
 
     def test_updates_removes_a_leftover_webhook(self):
@@ -144,11 +145,55 @@ class TelegramTest(unittest.TestCase):
             return FakeResponse(b'{"ok":true,"result":true}')
 
         with mock.patch("urllib.request.urlopen", urlopen), self.assertLogs("telegram", level="INFO"):
-            self.assertEqual(telegram.Telegram("SECRET").updates(0), [])
+            self.assertEqual(telegram.Telegram("123:SECRET").updates(0), [])
         self.assertEqual(calls, ["getUpdates", "deleteWebhook"])
 
     def test_md_escapes(self):
         self.assertEqual(telegram.md("a_b*c`d[e"), "a\\_b\\*c\\`d\\[e")
+
+    def test_token_must_look_like_one(self):
+        for token in ("", "REPLACE_ME", "123:abc def", "123:abc\n", "123:abc/../x", "123:abc?x=1"):
+            with self.assertRaises(telegram.TelegramError, msg=repr(token)) as ctx:
+                telegram.Telegram(token)
+            self.assertNotIn("abc", str(ctx.exception))
+        telegram.Telegram("123456:AAE-x_y")
+
+    def test_invalid_url_does_not_leak_the_token(self):
+        # http.client.InvalidURL is a ValueError and its message holds the whole URL.
+        with mock.patch("urllib.request.urlopen", side_effect=ValueError("URL can't contain control characters: /bot123:SECRET/x")):
+            with self.assertRaises(telegram.TelegramError) as ctx:
+                telegram.Telegram("123:SECRET").call("getMe")
+        self.assertNotIn("SECRET", str(ctx.exception))
+        self.assertIn("ValueError", str(ctx.exception))
+
+    def test_too_many_requests_waits_and_tries_once_more(self):
+        answers = [http_error(429, '{"ok":false,"description":"Too Many Requests: retry after 7","parameters":{"retry_after":7}}'),
+                   FakeResponse(b'{"ok":true,"result":{"message_id":1}}')]
+        with mock.patch("urllib.request.urlopen", side_effect=answers), mock.patch("time.sleep") as sleep, \
+                self.assertLogs("telegram", level="WARNING"):
+            self.assertEqual(telegram.Telegram("123:SECRET").send(1, "hi"), {"message_id": 1})
+        sleep.assert_called_once_with(7)
+
+    def test_a_long_wait_or_a_second_429_is_an_error(self):
+        too_long = http_error(429, '{"parameters":{"retry_after":3600}}')
+        with mock.patch("urllib.request.urlopen", side_effect=[too_long]), mock.patch("time.sleep") as sleep:
+            with self.assertRaises(telegram.TelegramError) as ctx:
+                telegram.Telegram("123:SECRET").send(1, "hi")
+        self.assertEqual(ctx.exception.retry_after, 3600)
+        sleep.assert_not_called()
+        twice = [http_error(429, '{"parameters":{"retry_after":1}}'), http_error(429, '{"parameters":{"retry_after":1}}')]
+        with mock.patch("urllib.request.urlopen", side_effect=twice), mock.patch("time.sleep") as sleep, \
+                self.assertLogs("telegram", level="WARNING"):
+            with self.assertRaises(telegram.TelegramError):
+                telegram.Telegram("123:SECRET").send(1, "hi")
+        sleep.assert_called_once_with(1)
+
+    def test_plain_takes_linear_time(self):
+        self.assertEqual(telegram.plain("<b>a</b> &lt;3 <i>b"), "a <3 b")
+        started = time.monotonic()
+        telegram.plain("<" * 200000)
+        telegram.plain("<a " * 70000)
+        self.assertLess(time.monotonic() - started, 2)  # quadratic with the old <[^>]+>: half a minute
 
 
 class GeminiTest(unittest.TestCase):
