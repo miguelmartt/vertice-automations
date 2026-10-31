@@ -9,6 +9,50 @@ Format loosely based on [Keep a Changelog](https://keepachangelog.com/). Dates a
 
 - Nothing pending right now.
 
+## 2026-10-31 — Security hardening: VertiGuard and form → Telegram
+
+### Security
+- **`vertiguard`, UptimeRobot webhook**: requires a shared secret, `WEBHOOK_TOKEN` (16+ characters),
+  sent as `token` in the JSON body (or `?token=`, or an `X-Webhook-Token` header) and compared in
+  constant time; without it the webhook does not start. A missing or wrong token gets the same 404 as
+  any other path, and nothing is sent. `Content-Length` must be a number up to 64 KiB (400 / 413),
+  clients get 10 s to send their request, deeply nested JSON is not an error, and at most 20 alerts a
+  minute reach Telegram (the rest are summed up in one message).
+- **`vertiguard`, bot**: answers only when the sender is `TELEGRAM_CHAT_ID` and the chat is your
+  private chat with the bot, for messages and buttons alike (not in groups).
+- **`vertiguard`, probes** (root through sudo): `system.sh` no longer feeds `df` or `ps` text into
+  bash arithmetic, where a crafted mount or process name could run a command as root; it reads `df`
+  without the device column and checks every number first. `ssh_logins.sh` reads only what the SSH
+  unit logged (`_SYSTEMD_UNIT`, which can't be faked like `_COMM`) and parses logins with a pattern
+  anchored on the whole line. The lists in `probes.conf` are split without glob expansion.
+  `lib/common.sh` sets a fixed `PATH`, `LC_ALL=C` and `umask 077`, and `json_str` drops every control
+  character. Shebangs are `#!/bin/bash`.
+- **`vertiguard`, sudoers**: the rule names each probe (the read-only ones without arguments) instead
+  of `/opt/vertiguard/*.sh`, with `env_reset`, `!env_keep` and a fixed `secure_path`; `install.sh`
+  checks it with `visudo` before putting it in place.
+- **`vertiguard`, systemd**: `PrivateTmp`, `ProtectSystem=full`, `UMask=0077`, `MemoryMax=512M`,
+  `TasksMax=128` and `StateDirectoryMode=0700`. Directives that imply `NoNewPrivileges` are left out on
+  purpose: they would break sudo (the unit explains it).
+- **`form-email-to-telegram`**: the IMAP server's certificate is now verified (imaplib's default does
+  not check it). Only emails from `FORM_FROM` with a DKIM pass for its domain in the first
+  `Authentication-Results` header are forwarded (`DKIM_DOMAIN=off` and `FORM_FROM=any` turn the
+  checks off). Every email is handled on its own: an unreadable one (unknown charset, deep nesting, a
+  multipart without boundary…) or one over 5 MB gets a short notice with its subject and the
+  `$FormFailed` keyword, and the rest still go through. Linear-time HTML to text, at most 64 KiB of
+  body looked at, 10 emails per check, no link previews, and errors logged on one line without email
+  text. Mailbox failures and Telegram failures are reported apart.
+- **`form-email-to-telegram`, systemd**: `MemoryMax=256M`, `CPUQuota=50%`, an empty capability set, a
+  system call filter, `RestrictAddressFamilies`, `PrivateDevices`, `ProtectKernel*`, `ProtectProc` and
+  more.
+- **`telegram.py`** (shared): checks the bot token's format up front, never puts the URL (with the
+  token) in an error, waits once when Telegram answers 429 with `retry_after`, and `plain()` takes
+  linear time.
+- Both installers re-apply `root:<user>` and mode `640` to an existing settings file.
+
+### Changed
+- `form-email-to-telegram` needs `FORM_FROM`. Until it is set, its installer does not restart a
+  running service, so the old one keeps working.
+
 ## 2026-10-30 — VertiGuard: one bot, commands and a daily report
 
 ### Changed
